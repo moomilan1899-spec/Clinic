@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ระบบคลีนิค กลุ่มที่ 1</title>
+<title>ระบบคลีนิค คลีนิค 1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -148,6 +148,8 @@
   .row-edit-btn:hover{color:var(--brass);border-color:var(--brass);background:var(--brass-soft);}
   .row-edit-btn svg{width:13px;height:13px;pointer-events:none;}
   .row-no{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted-dim);}
+  .row-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;}
+  .row-date{font-size:11px;color:var(--muted-dim);}
   .status-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;}
   .status-badge.รอดำเนินการ{color:var(--red);background:var(--red-soft);}
   .status-badge.กำลังดำเนินการ{color:var(--amber);background:var(--amber-soft);}
@@ -202,7 +204,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#C7A252" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/><path d="M12 8l2.5 2.5L12 16l-2.5-2.5z" fill="#C7A252" stroke="none"/></svg>
       </div>
       <div>
-        <h1>ระบบคลีนิค กลุ่มที่ 1</h1>
+        <h1>ระบบคลีนิค คลีนิค1 </h1>
         <p id="lastSync">ยังไม่ได้ซิงค์ข้อมูล</p>
       </div>
     </div>
@@ -274,6 +276,10 @@
       <div class="field">
         <label>จังหวัด</label>
         <select id="fProvince"></select>
+      </div>
+      <div class="field">
+        <label>วันที่ / เวลา</label>
+        <input type="datetime-local" id="fDate">
       </div>
       <div class="field">
         <label>ปัญหา (Problem)</label>
@@ -355,6 +361,31 @@ function normalizeProvince(s){
   return normalize(s).replace(/^จังหวัด/,'').trim();
 }
 
+// ---------- Date helpers ----------
+// Sheet stores date as "YYYY-MM-DD HH:mm" text. <input type="datetime-local"> uses "YYYY-MM-DDTHH:mm".
+function pad2(n){ return String(n).padStart(2,'0'); }
+function dateToLocalInputValue(d){
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function inputValueToStoredString(v){
+  // v like "2026-08-27T14:30" -> "2026-08-27 14:30"
+  return v ? v.replace('T', ' ') : '';
+}
+function storedStringToInputValue(s){
+  if(!s) return '';
+  const cleaned = normalize(s).replace(' ', 'T');
+  const d = new Date(cleaned);
+  if(isNaN(d.getTime())) return '';
+  return dateToLocalInputValue(d);
+}
+function formatDateDisplay(s){
+  if(!s) return '';
+  const cleaned = normalize(s).replace(' ', 'T');
+  const d = new Date(cleaned);
+  if(isNaN(d.getTime())) return escapeHtml(s); // fall back to raw text if unparseable
+  return d.toLocaleString('th-TH', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -412,6 +443,7 @@ function fetchData(){
         return {
           no: get(['No','ลำดับ']),
           province: normalizeProvince(get(['Province_Name','จังหวัด'])),
+          date: get(['Date','วันที่']),
           problem: get(['Problam','Problem']),
           progress: get(['Progress','สถานะดำเนินการ']),
           status: normalize(get(['Status','สถานะ'])) || "รอดำเนินการ"
@@ -481,7 +513,10 @@ function renderRows(){
       </div>
       <div class="row-problem">${escapeHtml(r.problem||'-')}</div>
       ${r.progress ? `<div class="row-progress">ความคืบหน้า: ${escapeHtml(r.progress)}</div>` : ''}
-      <div class="row-no">No. ${escapeHtml(String(r.no||''))}</div>
+      <div class="row-meta">
+        ${r.date ? `<span class="row-date">🕒 ${formatDateDisplay(r.date)}</span>` : ''}
+        <span class="row-no">No. ${escapeHtml(String(r.no||''))}</span>
+      </div>
     </div>
   `).join('');
 
@@ -547,6 +582,7 @@ function renderMap(){
           <span class="popup-badge status-badge ${statusBadgeClass(i.status)}">${escapeHtml(i.status)}</span>
           <div>${escapeHtml(i.problem||'-')}</div>
           ${i.progress ? `<div style="color:#8FA2B3;font-size:12px;">คืบหน้า: ${escapeHtml(i.progress)}</div>` : ''}
+          ${i.date ? `<div style="color:#8FA2B3;font-size:11px;">🕒 ${formatDateDisplay(i.date)}</div>` : ''}
         </div>`;
       });
     }
@@ -576,6 +612,7 @@ function openAddModal(){
   document.getElementById('addModalTitle').textContent = 'เพิ่มข้อมูลปัญหา';
   document.getElementById('submitAddLabel').textContent = 'บันทึกข้อมูล';
   resetAddForm();
+  document.getElementById('fDate').value = dateToLocalInputValue(new Date());
   document.getElementById('noScriptWarning').style.display = CONFIG.scriptUrl ? 'none' : 'block';
   openModal('addOverlay');
 }
@@ -587,6 +624,7 @@ function openEditModal(no){
   document.getElementById('addModalTitle').textContent = 'แก้ไขข้อมูล — No. ' + row.no;
   document.getElementById('submitAddLabel').textContent = 'บันทึกการแก้ไข';
   document.getElementById('fProvince').value = row.province;
+  document.getElementById('fDate').value = storedStringToInputValue(row.date) || dateToLocalInputValue(new Date());
   document.getElementById('fProblem').value = row.problem || '';
   document.getElementById('fProgress').value = row.progress || '';
   document.getElementById('fStatus').value = ['รอดำเนินการ','กำลังดำเนินการ','เสร็จสิ้น'].includes(row.status) ? row.status : 'รอดำเนินการ';
@@ -596,6 +634,7 @@ function openEditModal(no){
 
 async function submitNewRow(){
   const province = document.getElementById('fProvince').value;
+  const date = inputValueToStoredString(document.getElementById('fDate').value);
   const problem = normalize(document.getElementById('fProblem').value);
   const progress = normalize(document.getElementById('fProgress').value);
   const status = document.getElementById('fStatus').value;
@@ -603,7 +642,7 @@ async function submitNewRow(){
   if(!problem){ toast('กรุณากรอกรายละเอียดปัญหา'); return; }
 
   if(editingNo !== null){
-    await updateExistingRow(editingNo, { province, problem, progress, status });
+    await updateExistingRow(editingNo, { province, date, problem, progress, status });
     return;
   }
 
@@ -612,7 +651,7 @@ async function submitNewRow(){
     return isNaN(n) ? max : Math.max(max,n);
   }, 0) + 1;
 
-  const newRow = { no: nextNo, province, problem, progress, status };
+  const newRow = { no: nextNo, province, date, problem, progress, status };
 
   // optimistic local update
   pendingRows.push(newRow);
@@ -631,7 +670,7 @@ async function submitNewRow(){
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        action: 'add', no: String(nextNo), province, problem, progress, status
+        action: 'add', no: String(nextNo), province, date, problem, progress, status
       }).toString()
     });
     toast('ส่งข้อมูลไปยัง Google ชีตแล้ว กำลังซิงค์ (อาจใช้เวลาสักครู่)...');
@@ -668,7 +707,7 @@ async function updateExistingRow(no, fields){
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         action: 'update', no: String(no),
-        province: fields.province, problem: fields.problem,
+        province: fields.province, date: fields.date, problem: fields.problem,
         progress: fields.progress, status: fields.status
       }).toString()
     });
@@ -681,6 +720,7 @@ async function updateExistingRow(no, fields){
 
 function resetAddForm(){
   document.getElementById('fProvince').selectedIndex = 0;
+  document.getElementById('fDate').value = '';
   document.getElementById('fProblem').value = '';
   document.getElementById('fProgress').value = '';
   document.getElementById('fStatus').selectedIndex = 0;
