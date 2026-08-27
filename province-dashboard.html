@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ระบบติดตามปัญหารายจังหวัด คลีนิค by หมูเองนะอิอิ</title>
+<title>ระบบคลีนิค</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -139,6 +139,14 @@
   .row-item:hover{background:var(--panel-2);}
   .row-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px;}
   .row-province{font-weight:600;font-size:14px;font-family:'Chakra Petch',sans-serif;}
+  .row-top-right{display:flex;align-items:center;gap:8px;}
+  .row-edit-btn{
+    background:none;border:1px solid var(--line);border-radius:7px;color:var(--muted);
+    padding:4px 6px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    transition:all .15s ease;
+  }
+  .row-edit-btn:hover{color:var(--brass);border-color:var(--brass);background:var(--brass-soft);}
+  .row-edit-btn svg{width:13px;height:13px;pointer-events:none;}
   .row-no{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted-dim);}
   .status-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;}
   .status-badge.รอดำเนินการ{color:var(--red);background:var(--red-soft);}
@@ -194,7 +202,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#C7A252" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/><path d="M12 8l2.5 2.5L12 16l-2.5-2.5z" fill="#C7A252" stroke="none"/></svg>
       </div>
       <div>
-        <h1>ระบบติดตามปัญหารายจังหวัด</h1>
+        <h1>ระบบคลีนิค</h1>
         <p id="lastSync">ยังไม่ได้ซิงค์ข้อมูล</p>
       </div>
     </div>
@@ -259,7 +267,7 @@
 <div class="overlay" id="addOverlay">
   <div class="modal">
     <div class="modal-head">
-      <h3>เพิ่มข้อมูลปัญหา</h3>
+      <h3 id="addModalTitle">เพิ่มข้อมูลปัญหา</h3>
       <button class="modal-close" id="closeAdd">&times;</button>
     </div>
     <div class="modal-body">
@@ -289,7 +297,7 @@
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" id="cancelAdd">ยกเลิก</button>
-      <button class="btn btn-primary" id="submitAdd">บันทึกข้อมูล</button>
+      <button class="btn btn-primary" id="submitAdd"><span id="submitAddLabel">บันทึกข้อมูล</span></button>
     </div>
   </div>
 </div>
@@ -338,6 +346,7 @@ let CONFIG = { csvUrl: DEFAULT_CSV_URL, scriptUrl: "" };
 let allRows = [];      // rows from the published sheet
 let pendingRows = [];  // rows added locally, not yet confirmed in the sheet
 let activeStatusFilter = "all";
+let editingNo = null; // when set, the add/edit modal is in "edit" mode for this row's No.
 let map, markersLayer;
 
 function normalize(s){ return (s||"").toString().trim(); }
@@ -455,10 +464,15 @@ function renderRows(){
     return;
   }
   wrap.innerHTML = filtered.slice().reverse().map(r=>`
-    <div class="row-item" data-province="${escapeHtml(r.province)}">
+    <div class="row-item" data-province="${escapeHtml(r.province)}" data-no="${escapeHtml(String(r.no||''))}">
       <div class="row-top">
         <span class="row-province">${escapeHtml(r.province)}</span>
-        <span class="status-badge ${statusBadgeClass(r.status)}">${escapeHtml(r.status)}</span>
+        <div class="row-top-right">
+          <span class="status-badge ${statusBadgeClass(r.status)}">${escapeHtml(r.status)}</span>
+          <button class="row-edit-btn" data-edit-no="${escapeHtml(String(r.no||''))}" title="แก้ไขข้อมูล">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+        </div>
       </div>
       <div class="row-problem">${escapeHtml(r.problem||'-')}</div>
       ${r.progress ? `<div class="row-progress">ความคืบหน้า: ${escapeHtml(r.progress)}</div>` : ''}
@@ -468,6 +482,12 @@ function renderRows(){
 
   wrap.querySelectorAll('.row-item').forEach(el=>{
     el.addEventListener('click', ()=> focusProvinceOnMap(el.dataset.province));
+  });
+  wrap.querySelectorAll('.row-edit-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openEditModal(btn.dataset.editNo);
+    });
   });
 }
 
@@ -546,6 +566,29 @@ function populateProvinceSelect(){
   sel.innerHTML = PROVINCES.map(p=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
 }
 
+function openAddModal(){
+  editingNo = null;
+  document.getElementById('addModalTitle').textContent = 'เพิ่มข้อมูลปัญหา';
+  document.getElementById('submitAddLabel').textContent = 'บันทึกข้อมูล';
+  resetAddForm();
+  document.getElementById('noScriptWarning').style.display = CONFIG.scriptUrl ? 'none' : 'block';
+  openModal('addOverlay');
+}
+
+function openEditModal(no){
+  const row = combinedRows().find(r => String(r.no) === String(no));
+  if(!row){ toast('ไม่พบข้อมูลนี้'); return; }
+  editingNo = row.no;
+  document.getElementById('addModalTitle').textContent = 'แก้ไขข้อมูล — No. ' + row.no;
+  document.getElementById('submitAddLabel').textContent = 'บันทึกการแก้ไข';
+  document.getElementById('fProvince').value = row.province;
+  document.getElementById('fProblem').value = row.problem || '';
+  document.getElementById('fProgress').value = row.progress || '';
+  document.getElementById('fStatus').value = ['รอดำเนินการ','กำลังดำเนินการ','เสร็จสิ้น'].includes(row.status) ? row.status : 'รอดำเนินการ';
+  document.getElementById('noScriptWarning').style.display = CONFIG.scriptUrl ? 'none' : 'block';
+  openModal('addOverlay');
+}
+
 async function submitNewRow(){
   const province = document.getElementById('fProvince').value;
   const problem = normalize(document.getElementById('fProblem').value);
@@ -553,6 +596,11 @@ async function submitNewRow(){
   const status = document.getElementById('fStatus').value;
 
   if(!problem){ toast('กรุณากรอกรายละเอียดปัญหา'); return; }
+
+  if(editingNo !== null){
+    await updateExistingRow(editingNo, { province, problem, progress, status });
+    return;
+  }
 
   const nextNo = combinedRows().reduce((max,r)=>{
     const n = parseInt(r.no,10);
@@ -566,7 +614,6 @@ async function submitNewRow(){
   await savePending();
   renderAll();
   closeModal('addOverlay');
-  resetAddForm();
 
   if(!CONFIG.scriptUrl){
     toast('บันทึกชั่วคราวในหน้านี้ (ยังไม่เชื่อมต่อ Google ชีต — ตั้งค่าที่ปุ่ม "ตั้งค่า")');
@@ -579,7 +626,7 @@ async function submitNewRow(){
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        no: String(nextNo), province, problem, progress, status
+        action: 'add', no: String(nextNo), province, problem, progress, status
       }).toString()
     });
     toast('ส่งข้อมูลไปยัง Google ชีตแล้ว กำลังซิงค์ (อาจใช้เวลาสักครู่)...');
@@ -589,7 +636,46 @@ async function submitNewRow(){
   }
 }
 
+async function updateExistingRow(no, fields){
+  // update in whichever local list currently holds this row
+  let updated = false;
+  allRows = allRows.map(r=>{
+    if(String(r.no)===String(no)){ updated = true; return Object.assign({}, r, fields); }
+    return r;
+  });
+  pendingRows = pendingRows.map(r=>{
+    if(String(r.no)===String(no)){ updated = true; return Object.assign({}, r, fields); }
+    return r;
+  });
+  await savePending();
+  renderAll();
+  closeModal('addOverlay');
+
+  if(!CONFIG.scriptUrl){
+    toast('แก้ไขชั่วคราวในหน้านี้ (ยังไม่เชื่อมต่อ Google ชีต — ตั้งค่าที่ปุ่ม "ตั้งค่า")');
+    return;
+  }
+
+  try{
+    await fetch(CONFIG.scriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        action: 'update', no: String(no),
+        province: fields.province, problem: fields.problem,
+        progress: fields.progress, status: fields.status
+      }).toString()
+    });
+    toast('ส่งการแก้ไขไปยัง Google ชีตแล้ว กำลังซิงค์ (อาจใช้เวลาสักครู่)...');
+    setTimeout(fetchData, 5000);
+  }catch(e){
+    toast('ส่งการแก้ไขไปยัง Google ชีตไม่สำเร็จ — ข้อมูลยังแก้ไขชั่วคราวในหน้านี้');
+  }
+}
+
 function resetAddForm(){
+  document.getElementById('fProvince').selectedIndex = 0;
   document.getElementById('fProblem').value = '';
   document.getElementById('fProgress').value = '';
   document.getElementById('fStatus').selectedIndex = 0;
@@ -601,10 +687,7 @@ function closeModal(id){ document.getElementById(id).classList.remove('show'); }
 
 // ---------- Wire up ----------
 document.getElementById('btnRefresh').addEventListener('click', fetchData);
-document.getElementById('btnAdd').addEventListener('click', ()=>{
-  document.getElementById('noScriptWarning').style.display = CONFIG.scriptUrl ? 'none' : 'block';
-  openModal('addOverlay');
-});
+document.getElementById('btnAdd').addEventListener('click', openAddModal);
 document.getElementById('closeAdd').addEventListener('click', ()=>closeModal('addOverlay'));
 document.getElementById('cancelAdd').addEventListener('click', ()=>closeModal('addOverlay'));
 document.getElementById('submitAdd').addEventListener('click', submitNewRow);
