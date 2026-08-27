@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ระบบคลีนิค คลีนิคกลุ่มที่ 1</title>
+<title>ระบบคลีนิค กลุ่มที่ 1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -202,7 +202,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#C7A252" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/><path d="M12 8l2.5 2.5L12 16l-2.5-2.5z" fill="#C7A252" stroke="none"/></svg>
       </div>
       <div>
-        <h1>ระบบคลีนิค คลีนิคกลุ่มที่ 1</h1>
+        <h1>ระบบคลีนิค กลุ่มที่ 1</h1>
         <p id="lastSync">ยังไม่ได้ซิงค์ข้อมูล</p>
       </div>
     </div>
@@ -332,6 +332,7 @@
 
 <script>
 const DEFAULT_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSCvAyB32mezSJv1BSHzvF5Pl6mYKuZuVyWuTQXTs8yHlHFSNG_n8pJw8qS5o-OkR3dO-23M2eluW-U/pub?output=csv";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyAjlI_XM4x6rTb_WSPNaGnD3dTl228wBsfXeXn7CIc4Q812XY1GUqoynCNuQV7pIdbmA/exec";
 
 const PROVINCES = [{"name": "กระบี่", "lat": 8.0862997, "lng": 98.90628349999997}, {"name": "กรุงเทพมหานคร", "lat": 13.7278956, "lng": 100.52412349999997}, {"name": "กาญจนบุรี", "lat": 14.0227797, "lng": 99.53281149999998}, {"name": "กาฬสินธุ์", "lat": 16.4314078, "lng": 103.5058755}, {"name": "กำแพงเพชร", "lat": 16.4827798, "lng": 99.52266179999992}, {"name": "ขอนแก่น", "lat": 16.4419355, "lng": 102.8359921}, {"name": "จันทบุรี", "lat": 12.61134, "lng": 102.10385459999998}, {"name": "ฉะเชิงเทรา", "lat": 13.6904194, "lng": 101.07795959999999}, {"name": "ชลบุรี", "lat": 13.3611431, "lng": 100.98467170000004}, {"name": "ชัยนาท", "lat": 15.1851971, "lng": 100.12512500000003}, {"name": "ชัยภูมิ", "lat": 15.8068173, "lng": 102.03150270000003}, {"name": "ชุมพร", "lat": 10.4930496, "lng": 99.18001989999993}, {"name": "ตรัง", "lat": 7.5593851, "lng": 99.61100650000003}, {"name": "ตราด", "lat": 12.2427563, "lng": 102.51747339999997}, {"name": "ตาก", "lat": 16.8839901, "lng": 99.12584979999997}, {"name": "นครนายก", "lat": 14.2069466, "lng": 101.21305110000003}, {"name": "นครปฐม", "lat": 13.8199206, "lng": 100.06216760000007}, {"name": "นครพนม", "lat": 17.392039, "lng": 104.76955079999993}, {"name": "นครราชสีมา", "lat": 14.9798997, "lng": 102.09776929999998}, {"name": "นครศรีธรรมราช", "lat": 8.4303975, "lng": 99.96312190000003}, {"name": "นครสวรรค์", "lat": 15.6930072, "lng": 100.12255949999997}, {"name": "นนทบุรี", "lat": 13.8621125, "lng": 100.51435279999998}, {"name": "นราธิวาส", "lat": 6.4254607, "lng": 101.82531429999995}, {"name": "น่าน", "lat": 18.7756318, "lng": 100.77304170000002}, {"name": "บึงกาฬ", "lat": 18.3609104, "lng": 103.64644629999998}, {"name": "บุรีรัมย์", "lat": 14.9930017, "lng": 103.10291910000001}, {"name": "ปทุมธานี", "lat": 14.0208391, "lng": 100.52502759999993}, {"name": "ประจวบคีรีขันธ์", "lat": 11.812367, "lng": 99.79732709999996}, {"name": "ปราจีนบุรี", "lat": 14.0509704, "lng": 101.37274389999993}, {"name": "ปัตตานี", "lat": 6.869484399999999, "lng": 101.25048259999994}, {"name": "พระนครศรีอยุธยา", "lat": 14.3532128, "lng": 100.56895989999998}, {"name": "พะเยา", "lat": 19.1664789, "lng": 99.9019419}, {"name": "พังงา", "lat": 8.4407456, "lng": 98.51930319999997}, {"name": "พัทลุง", "lat": 7.6166823, "lng": 100.07402309999998}, {"name": "พิจิตร", "lat": 16.4429516, "lng": 100.34823289999997}, {"name": "พิษณุโลก", "lat": 16.8298048, "lng": 100.26149150000003}, {"name": "ภูเก็ต", "lat": 7.9810496, "lng": 98.36388239999997}, {"name": "มหาสารคาม", "lat": 16.1850896, "lng": 103.30264609999995}, {"name": "มุกดาหาร", "lat": 16.542443, "lng": 104.72091509999996}, {"name": "ยะลา", "lat": 6.541147, "lng": 101.28039469999999}, {"name": "ยโสธร", "lat": 15.792641, "lng": 104.14528270000005}, {"name": "ระนอง", "lat": 9.9528702, "lng": 98.60846409999999}, {"name": "ระยอง", "lat": 12.6833115, "lng": 101.23742949999996}, {"name": "ราชบุรี", "lat": 13.5282893, "lng": 99.81342110000003}, {"name": "ร้อยเอ็ด", "lat": 16.0538196, "lng": 103.65200359999994}, {"name": "ลพบุรี", "lat": 14.7995081, "lng": 100.65337060000002}, {"name": "ลำปาง", "lat": 18.2888404, "lng": 99.49087399999996}, {"name": "ลำพูน", "lat": 18.5744606, "lng": 99.0087221}, {"name": "ศรีสะเกษ", "lat": 15.1186009, "lng": 104.32200949999992}, {"name": "สกลนคร", "lat": 17.1545995, "lng": 104.1348365}, {"name": "สงขลา", "lat": 7.1756004, "lng": 100.61434699999995}, {"name": "สตูล", "lat": 6.6238158, "lng": 100.06737440000006}, {"name": "สมุทรปราการ", "lat": 13.5990961, "lng": 100.59983190000003}, {"name": "สมุทรสงคราม", "lat": 13.4098217, "lng": 100.00226450000002}, {"name": "สมุทรสาคร", "lat": 13.5475216, "lng": 100.27439559999993}, {"name": "สระบุรี", "lat": 14.5289154, "lng": 100.91014210000003}, {"name": "สระแก้ว", "lat": 13.824038, "lng": 102.0645839}, {"name": "สิงห์บุรี", "lat": 14.8936253, "lng": 100.39673140000002}, {"name": "สุพรรณบุรี", "lat": 14.4744892, "lng": 100.11771279999994}, {"name": "สุราษฎร์ธานี", "lat": 9.1382389, "lng": 99.32174829999997}, {"name": "สุรินทร์", "lat": 14.882905, "lng": 103.49371070000007}, {"name": "สุโขทัย", "lat": 17.0055573, "lng": 99.82637120000004}, {"name": "หนองคาย", "lat": 17.8782803, "lng": 102.74126380000007}, {"name": "หนองบัวลำภู", "lat": 17.2218247, "lng": 102.42603680000002}, {"name": "อำนาจเจริญ", "lat": 15.8656783, "lng": 104.62577740000006}, {"name": "อุดรธานี", "lat": 17.4138413, "lng": 102.78723250000007}, {"name": "อุตรดิตถ์", "lat": 17.6200886, "lng": 100.09929420000003}, {"name": "อุทัยธานี", "lat": 15.3835001, "lng": 100.02455269999996}, {"name": "อุบลราชธานี", "lat": 15.2286861, "lng": 104.85642170000006}, {"name": "อ่างทอง", "lat": 14.5896054, "lng": 100.45505200000002}, {"name": "เชียงราย", "lat": 19.9071656, "lng": 99.83095500000002}, {"name": "เชียงใหม่", "lat": 18.7877477, "lng": 98.99313110000003}, {"name": "เพชรบุรี", "lat": 13.1111601, "lng": 99.93913069999996}, {"name": "เพชรบูรณ์", "lat": 16.4189807, "lng": 101.15509259999999}, {"name": "เลย", "lat": 17.4860232, "lng": 101.72230020000006}, {"name": "แพร่", "lat": 18.1445774, "lng": 100.14028310000003}, {"name": "แม่ฮ่องสอน", "lat": 19.2990643, "lng": 97.96562259999996}];
 
@@ -342,7 +343,7 @@ const STATUS_COLORS = {
   "_none": "#4A5C6C"
 };
 
-let CONFIG = { csvUrl: DEFAULT_CSV_URL, scriptUrl: "" };
+let CONFIG = { csvUrl: DEFAULT_CSV_URL, scriptUrl: DEFAULT_SCRIPT_URL };
 let allRows = [];      // rows from the published sheet
 let pendingRows = [];  // rows added locally, not yet confirmed in the sheet
 let activeStatusFilter = "all";
@@ -366,10 +367,14 @@ function toast(msg){
 async function loadConfig(){
   try{
     const r = await window.storage.get('dashboard_config', false);
-    if(r && r.value){ CONFIG = Object.assign(CONFIG, JSON.parse(r.value)); }
-  }catch(e){ /* no config saved yet */ }
+    if(r && r.value){
+      const saved = JSON.parse(r.value);
+      if(saved.csvUrl) CONFIG.csvUrl = saved.csvUrl;
+      if(saved.scriptUrl) CONFIG.scriptUrl = saved.scriptUrl;
+    }
+  }catch(e){ /* no config saved yet, defaults apply */ }
   document.getElementById('sCsvUrl').value = CONFIG.csvUrl || DEFAULT_CSV_URL;
-  document.getElementById('sScriptUrl').value = CONFIG.scriptUrl || "";
+  document.getElementById('sScriptUrl').value = CONFIG.scriptUrl || DEFAULT_SCRIPT_URL;
 }
 async function saveConfig(){
   try{ await window.storage.set('dashboard_config', JSON.stringify(CONFIG), false); }
@@ -697,7 +702,7 @@ document.getElementById('closeSettings').addEventListener('click', ()=>closeModa
 document.getElementById('cancelSettings').addEventListener('click', ()=>closeModal('settingsOverlay'));
 document.getElementById('saveSettings').addEventListener('click', async ()=>{
   CONFIG.csvUrl = normalize(document.getElementById('sCsvUrl').value) || DEFAULT_CSV_URL;
-  CONFIG.scriptUrl = normalize(document.getElementById('sScriptUrl').value);
+  CONFIG.scriptUrl = normalize(document.getElementById('sScriptUrl').value) || DEFAULT_SCRIPT_URL;
   await saveConfig();
   closeModal('settingsOverlay');
   toast('บันทึกการตั้งค่าแล้ว');
