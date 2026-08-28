@@ -429,35 +429,57 @@ function normalizeProvince(s){
 }
 
 // ---------- Date helpers ----------
-// Sheet stores date as "YYYY-MM-DD HH:mm" text. <input type="datetime-local"> uses "YYYY-MM-DDTHH:mm".
 function pad2(n){ return String(n).padStart(2,'0'); }
 function dateToLocalInputValue(d){
   return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 function inputValueToStoredString(v){
-  // v like "2026-08-27T14:30" -> "2026-08-27 14:30"
   return v ? v.replace('T', ' ') : '';
 }
 function storedStringToInputValue(s){
   if(!s) return '';
-  const cleaned = normalize(s).replace(' ', 'T');
-  const d = new Date(cleaned);
-  if(isNaN(d.getTime())) return '';
+  let d = parseStoredDate(s);
+  if(!d) return '';
   return dateToLocalInputValue(d);
 }
 function formatDateDisplay(s){
   if(!s) return '';
-  const cleaned = normalize(s).replace(' ', 'T');
-  const d = new Date(cleaned);
-  if(isNaN(d.getTime())) return escapeHtml(s); // fall back to raw text if unparseable
+  let d = parseStoredDate(s);
+  if(!d) return escapeHtml(s); // fall back to raw text if unparseable
   return d.toLocaleString('th-TH', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
+
 function parseStoredDate(s){
   if(!s) return null;
-  const cleaned = normalize(s).replace(' ', 'T');
-  const d = new Date(cleaned);
+  let cleaned = normalize(s);
+  
+  // แยกวันที่และเวลา
+  let parts = cleaned.split(/[\sT]+/);
+  let datePart = parts[0];
+  let timePart = parts[1] || '00:00:00';
+  
+  // รองรับวันที่แบบไทย/อังกฤษที่ใช้ / (เช่น DD/MM/YYYY)
+  if(datePart.includes('/')) {
+    let dParts = datePart.split('/');
+    if(dParts.length === 3) {
+      let d = parseInt(dParts[0], 10);
+      let m = parseInt(dParts[1], 10);
+      let y = parseInt(dParts[2], 10);
+      
+      // ถ้าเป็นรูปแบบ MM/DD/YYYY ให้สลับตำแหน่ง
+      if (m > 12) { let t = d; d = m; m = t; }
+      // แปลงปี พ.ศ. เป็น ค.ศ.
+      if (y > 2500) { y -= 543; } 
+      else if (y < 100) { y += 2000; }
+      
+      datePart = `${y}-${pad2(m)}-${pad2(d)}`;
+    }
+  }
+  
+  const d = new Date(`${datePart}T${timePart}`);
   return isNaN(d.getTime()) ? null : d;
 }
+
 const OVERDUE_DAYS = 3;
 function daysSince(d){
   return (Date.now() - d.getTime()) / (1000*60*60*24);
@@ -601,8 +623,7 @@ function getFilteredRows(){
   });
 }
 
-function renderRows(){
-  const filtered = getFilteredRows();
+function renderRows(filtered = getFilteredRows()){
   document.getElementById('rowCount').textContent = filtered.length + ' รายการ';
   const wrap = document.getElementById('rowsWrap');
   if(filtered.length===0){
@@ -648,10 +669,11 @@ function escapeHtml(s){
 }
 
 function renderAll(){
-  renderStats(combinedRows());
-  renderRows();
-  renderMap();
-  renderChart();
+  const filtered = getFilteredRows();
+  renderStats(filtered);
+  renderRows(filtered);
+  renderMap(filtered);
+  renderChart(filtered);
 }
 
 // ---------- Map ----------
@@ -664,9 +686,8 @@ function initMap(){
   markersLayer = L.layerGroup().addTo(map);
 }
 
-function renderMap(){
+function renderMap(rows = getFilteredRows()){
   markersLayer.clearLayers();
-  const rows = combinedRows();
   const byProvince = {};
   rows.forEach(r=>{
     if(!byProvince[r.province]) byProvince[r.province] = [];
@@ -716,8 +737,7 @@ function focusProvinceOnMap(name){
 
 // ---------- Chart: top provinces by report count ----------
 const CHART_PALETTE = ['#C7A252','#D1495B','#E0A458','#4FB286','#5B8FD1','#B07CC6','#D18C5B','#6FBFB0','#A9A356','#7A8FA6'];
-function renderChart(){
-  const rows = combinedRows();
+function renderChart(rows = getFilteredRows()){
   const counts = {};
   rows.forEach(r=>{ counts[r.province] = (counts[r.province]||0) + 1; });
   const entries = Object.entries(counts).sort((a,b)=> b[1]-a[1]);
@@ -925,7 +945,7 @@ function exportExcel(){
   const ws = XLSX.utils.json_to_sheet(data);
   ws['!cols'] = [ {wch:8}, {wch:18}, {wch:20}, {wch:40}, {wch:30}, {wch:16}, {wch:16} ];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'รายงานปัญหา');
+  XLS.utils.book_append_sheet(wb, ws, 'รายงานปัญหา');
 
   const dateStamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
   XLSX.writeFile(wb, `รายงานปัญหารายจังหวัด_${dateStamp}.xlsx`);
@@ -955,28 +975,28 @@ document.getElementById('saveSettings').addEventListener('click', async ()=>{
   fetchData();
 });
 
-document.getElementById('searchBox').addEventListener('input', renderRows);
+document.getElementById('searchBox').addEventListener('input', renderAll);
 document.querySelectorAll('.chip[data-s]').forEach(chip=>{
   chip.addEventListener('click', ()=>{
     document.querySelectorAll('.chip[data-s]').forEach(c=>c.classList.remove('active'));
     chip.classList.add('active');
     activeStatusFilter = chip.dataset.s;
-    renderRows();
+    renderAll();
   });
 });
 
 document.getElementById('chipOverdue').addEventListener('click', ()=>{
   overdueOnly = !overdueOnly;
   document.getElementById('chipOverdue').classList.toggle('active', overdueOnly);
-  renderRows();
+  renderAll();
 });
 
-document.getElementById('dateFrom').addEventListener('change', renderRows);
-document.getElementById('dateTo').addEventListener('change', renderRows);
+document.getElementById('dateFrom').addEventListener('change', renderAll);
+document.getElementById('dateTo').addEventListener('change', renderAll);
 document.getElementById('btnClearDate').addEventListener('click', ()=>{
   document.getElementById('dateFrom').value = '';
   document.getElementById('dateTo').value = '';
-  renderRows();
+  renderAll();
 });
 
 document.getElementById('btnExport').addEventListener('click', exportExcel);
