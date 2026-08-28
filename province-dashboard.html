@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ระบบคลีนิค V1.2</title>
+<title>ระบบคลีนิค</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -242,7 +242,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#C7A252" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/><path d="M12 8l2.5 2.5L12 16l-2.5-2.5z" fill="#C7A252" stroke="none"/></svg>
       </div>
       <div>
-        <h1>ระบบคลีนิค V1.2 by moo เอง</h1>
+        <h1>ระบบคลีนิค</h1>
         <p id="lastSync">ยังไม่ได้ซิงค์ข้อมูล</p>
       </div>
     </div>
@@ -321,8 +321,8 @@
 
   <div class="panel chart-panel">
     <div class="panel-head">
-      <h2>จังหวัดที่แจ้งปัญหาเข้ามามากที่สุด</h2>
-      <span class="hint">สัดส่วนตามจำนวนรายการที่แจ้งเข้ามา</span>
+      <h2>สัดส่วนจังหวัดที่แจ้งปัญหา</h2>
+      <span class="hint">แสดงสัดส่วนตามตัวกรองปัจจุบัน</span>
     </div>
     <div class="chart-body">
       <canvas id="topProvinceChart"></canvas>
@@ -423,61 +423,107 @@ let editingNo = null; // when set, the add/edit modal is in "edit" mode for this
 let map, markersLayer;
 let topProvinceChart = null;
 
-function normalize(s){ return (s||"").toString().trim(); }
+function normalize(s){
+  return (s ?? '').toString()
+    .replace(/\\uFEFF/g,'')
+    .replace(/[\\u00A0\\u200B]/g,' ')
+    .replace(/\\s+/g,' ')
+    .trim();
+}
+
 function normalizeProvince(s){
-  return normalize(s).replace(/^จังหวัด/,'').trim();
+  return normalize(s)
+    .replace(/^จังหวัด\\s*/i,'')
+    .replace(/^จ\.?\\s*/i,'')
+    .trim();
+}
+
+// ใช้คีย์มาตรฐานสำหรับจับคู่ชื่อจังหวัด ลดปัญหา space/BOM/คำว่า "จังหวัด"
+function provinceKey(s){
+  return normalizeProvince(s)
+    .replace(/\\s+/g,'')
+    .toLowerCase();
 }
 
 // ---------- Date helpers ----------
+// รองรับวันที่จาก Google Sheets หลายรูปแบบ:
+// YYYY-MM-DD HH:mm[:ss], YYYY/MM/DD HH:mm, DD/MM/YYYY HH:mm,
+// DD-MM-YYYY HH:mm, ISO datetime และวันที่ พ.ศ.
 function pad2(n){ return String(n).padStart(2,'0'); }
+
 function dateToLocalInputValue(d){
   return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
+
 function inputValueToStoredString(v){
   return v ? v.replace('T', ' ') : '';
 }
-function storedStringToInputValue(s){
-  if(!s) return '';
-  let d = parseStoredDate(s);
-  if(!d) return '';
-  return dateToLocalInputValue(d);
-}
-function formatDateDisplay(s){
-  if(!s) return '';
-  let d = parseStoredDate(s);
-  if(!d) return escapeHtml(s); // fall back to raw text if unparseable
-  return d.toLocaleString('th-TH', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-}
 
-function parseStoredDate(s){
+function parseStoredDate(value){
+  if(value === null || value === undefined || value === '') return null;
+
+  let s = normalize(value);
   if(!s) return null;
-  let cleaned = normalize(s);
-  
-  // แยกวันที่และเวลา
-  let parts = cleaned.split(/[\sT]+/);
-  let datePart = parts[0];
-  let timePart = parts[1] || '00:00:00';
-  
-  // รองรับวันที่แบบไทย/อังกฤษที่ใช้ / (เช่น DD/MM/YYYY)
-  if(datePart.includes('/')) {
-    let dParts = datePart.split('/');
-    if(dParts.length === 3) {
-      let d = parseInt(dParts[0], 10);
-      let m = parseInt(dParts[1], 10);
-      let y = parseInt(dParts[2], 10);
-      
-      // ถ้าเป็นรูปแบบ MM/DD/YYYY ให้สลับตำแหน่ง
-      if (m > 12) { let t = d; d = m; m = t; }
-      // แปลงปี พ.ศ. เป็น ค.ศ.
-      if (y > 2500) { y -= 543; } 
-      else if (y < 100) { y += 2000; }
-      
-      datePart = `${y}-${pad2(m)}-${pad2(d)}`;
+
+  // Excel / Google Sheets serial date
+  if(/^\\d+(\\.\\d+)?$/.test(s)){
+    const n = Number(s);
+    if(n > 20000 && n < 100000){
+      const d = new Date(Date.UTC(1899,11,30) + n * 86400000);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds());
     }
   }
-  
-  const d = new Date(`${datePart}T${timePart}`);
+
+  // ISO / YYYY-MM-DD / YYYY/MM/DD
+  let m = s.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})(?:[ T]+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?/);
+  if(m){
+    let y=Number(m[1]), mo=Number(m[2]), day=Number(m[3]);
+    const hh=Number(m[4]||0), mm=Number(m[5]||0), ss=Number(m[6]||0);
+    if(y >= 2400) y -= 543;
+    const d = new Date(y, mo-1, day, hh, mm, ss);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY (รองรับ พ.ศ.)
+  m = s.match(/^(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})(?:[ T]+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?/);
+  if(m){
+    const day=Number(m[1]), mo=Number(m[2]);
+    let y=Number(m[3]); if(y >= 2400) y -= 543;
+    const hh=Number(m[4]||0), mm=Number(m[5]||0), ss=Number(m[6]||0);
+    const d = new Date(y, mo-1, day, hh, mm, ss);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(s.replace(' ', 'T'));
   return isNaN(d.getTime()) ? null : d;
+}
+
+function storedStringToInputValue(s){
+  const d = parseStoredDate(s);
+  return d ? dateToLocalInputValue(d) : '';
+}
+
+function formatDateDisplay(s){
+  const d = parseStoredDate(s);
+  if(!d) return escapeHtml(s);
+  return d.toLocaleString('th-TH', {
+    day:'2-digit', month:'short', year:'numeric',
+    hour:'2-digit', minute:'2-digit'
+  });
+}
+
+function dateOnlyKey(value){
+  const d = parseStoredDate(value);
+  if(!d) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+}
+
+function isDateInRange(value, fromVal, toVal){
+  const key = dateOnlyKey(value);
+  if(!key) return false;
+  if(fromVal && key < fromVal) return false;
+  if(toVal && key > toVal) return false;
+  return true;
 }
 
 const OVERDUE_DAYS = 3;
@@ -552,8 +598,8 @@ function fetchData(){
         };
         return {
           no: get(['No','ลำดับ']),
-          province: normalizeProvince(get(['Province_Name','จังหวัด'])),
-          date: get(['Date','วันที่']),
+          province: normalizeProvince(get(['Province_Name','จังหวัด','Province'])),
+          date: normalize(get(['Date','วันที่','Datetime','Date_Time'])),
           problem: get(['Problam','Problem']),
           progress: get(['Progress','สถานะดำเนินการ']),
           status: normalize(get(['Status','สถานะ'])) || "รอดำเนินการ"
@@ -601,29 +647,23 @@ function statusBadgeClass(status){
 function getFilteredRows(){
   const rows = combinedRows();
   const q = normalize(document.getElementById('searchBox').value).toLowerCase();
-  const fromVal = document.getElementById('dateFrom').value; // "YYYY-MM-DD" or ""
+  const fromVal = document.getElementById('dateFrom').value;
   const toVal = document.getElementById('dateTo').value;
-  const fromDate = fromVal ? new Date(fromVal + 'T00:00:00') : null;
-  const toDate = toVal ? new Date(toVal + 'T23:59:59') : null;
 
   return rows.filter(r=>{
     const matchesStatus = activeStatusFilter==='all' || r.status===activeStatusFilter;
-    const matchesQuery = !q || r.province.toLowerCase().includes(q) || (r.problem||'').toLowerCase().includes(q);
+    const provinceText = normalize(r.province).toLowerCase();
+    const problemText = normalize(r.problem).toLowerCase();
+    const matchesQuery = !q || provinceText.includes(q) || problemText.includes(q);
     const matchesOverdue = !overdueOnly || isOverdue(r);
-    let matchesDate = true;
-    if(fromDate || toDate){
-      const d = parseStoredDate(r.date);
-      if(!d) matchesDate = false;
-      else{
-        if(fromDate && d < fromDate) matchesDate = false;
-        if(toDate && d > toDate) matchesDate = false;
-      }
-    }
+    const matchesDate = (!fromVal && !toVal) || isDateInRange(r.date, fromVal, toVal);
+
     return matchesStatus && matchesQuery && matchesOverdue && matchesDate;
   });
 }
 
-function renderRows(filtered = getFilteredRows()){
+function renderRows(){
+  const filtered = getFilteredRows();
   document.getElementById('rowCount').textContent = filtered.length + ' รายการ';
   const wrap = document.getElementById('rowsWrap');
   if(filtered.length===0){
@@ -669,11 +709,10 @@ function escapeHtml(s){
 }
 
 function renderAll(){
-  const filtered = getFilteredRows();
-  renderStats(filtered);
-  renderRows(filtered);
-  renderMap(filtered);
-  renderChart(filtered);
+  renderStats(combinedRows());
+  renderRows();
+  renderMap();
+  renderChart();
 }
 
 // ---------- Map ----------
@@ -686,16 +725,19 @@ function initMap(){
   markersLayer = L.layerGroup().addTo(map);
 }
 
-function renderMap(rows = getFilteredRows()){
+function renderMap(){
   markersLayer.clearLayers();
+  const rows = combinedRows();
   const byProvince = {};
   rows.forEach(r=>{
-    if(!byProvince[r.province]) byProvince[r.province] = [];
-    byProvince[r.province].push(r);
+    const key = provinceKey(r.province);
+    if(!key) return;
+    if(!byProvince[key]) byProvince[key] = [];
+    byProvince[key].push(r);
   });
 
   PROVINCES.forEach(p=>{
-    const issues = byProvince[p.name] || [];
+    const issues = byProvince[provinceKey(p.name)] || [];
     let color = STATUS_COLORS._none;
     let radius = 5;
     if(issues.length){
@@ -735,27 +777,52 @@ function focusProvinceOnMap(name){
   });
 }
 
-// ---------- Chart: top provinces by report count ----------
+// ---------- Chart: province proportion ----------
 const CHART_PALETTE = ['#C7A252','#D1495B','#E0A458','#4FB286','#5B8FD1','#B07CC6','#D18C5B','#6FBFB0','#A9A356','#7A8FA6'];
-function renderChart(rows = getFilteredRows()){
+
+function renderChart(){
+  // สำคัญ: กราฟใช้ข้อมูลชุดเดียวกับตัวกรองตาราง
+  const rows = getFilteredRows();
   const counts = {};
-  rows.forEach(r=>{ counts[r.province] = (counts[r.province]||0) + 1; });
-  const entries = Object.entries(counts).sort((a,b)=> b[1]-a[1]);
+
+  rows.forEach(r=>{
+    const name = normalizeProvince(r.province);
+    const key = provinceKey(name);
+    if(!key) return;
+
+    // เก็บชื่อจังหวัดที่อ่านง่าย โดยรวมชื่อที่สะกดต่างกันเข้าด้วยกัน
+    if(!counts[key]) counts[key] = { name, count: 0 };
+    counts[key].count++;
+  });
+
+  const entries = Object.values(counts)
+    .sort((a,b)=>b.count-a.count);
 
   const TOP_N = 7;
   const top = entries.slice(0, TOP_N);
-  const restTotal = entries.slice(TOP_N).reduce((s,[,c])=>s+c, 0);
-  const labels = top.map(([name])=>name);
-  const values = top.map(([,c])=>c);
-  if(restTotal > 0){ labels.push('อื่นๆ'); values.push(restTotal); }
+  const restTotal = entries.slice(TOP_N).reduce((sum,x)=>sum+x.count, 0);
 
-  const ctx = document.getElementById('topProvinceChart').getContext('2d');
-  if(topProvinceChart){ topProvinceChart.destroy(); }
+  const labels = top.map(x=>x.name);
+  const values = top.map(x=>x.count);
 
-  if(entries.length === 0){
+  if(restTotal > 0){
+    labels.push('อื่นๆ');
+    values.push(restTotal);
+  }
+
+  const canvas = document.getElementById('topProvinceChart');
+  const ctx = canvas.getContext('2d');
+
+  if(topProvinceChart){
+    topProvinceChart.destroy();
     topProvinceChart = null;
+  }
+
+  if(!entries.length){
     return;
   }
+
+  const total = values.reduce((a,b)=>a+b,0);
 
   topProvinceChart = new Chart(ctx, {
     type: 'doughnut',
@@ -763,25 +830,42 @@ function renderChart(rows = getFilteredRows()){
       labels,
       datasets: [{
         data: values,
-        backgroundColor: labels.map((_,i)=> CHART_PALETTE[i % CHART_PALETTE.length]),
+        backgroundColor: labels.map((_,i)=>CHART_PALETTE[i % CHART_PALETTE.length]),
         borderColor: '#16232F',
-        borderWidth: 2
+        borderWidth: 2,
+        hoverOffset: 5
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: true,
+      cutout: '56%',
       plugins: {
         legend: {
           position: 'right',
-          labels: { color: '#E9EEF2', font: { family: 'Sarabun', size: 12.5 }, padding: 12 }
+          labels: {
+            color: '#E9EEF2',
+            font: { family:'Sarabun', size:12.5 },
+            padding: 12,
+            generateLabels: function(chart){
+              const data = chart.data;
+              return data.labels.map((label,i)=>({
+                text: `${label}  ${((data.datasets[0].data[i]/total)*100).toFixed(1)}%`,
+                fillStyle: data.datasets[0].backgroundColor[i],
+                strokeStyle: data.datasets[0].backgroundColor[i],
+                lineWidth: 0,
+                hidden: false,
+                index: i
+              }));
+            }
+          }
         },
         tooltip: {
           callbacks: {
             label: function(item){
-              const total = values.reduce((a,b)=>a+b,0);
-              const pct = total ? ((item.parsed/total)*100).toFixed(1) : 0;
-              return `${item.label}: ${item.parsed} รายการ (${pct}%)`;
+              const count = Number(item.raw || 0);
+              const pct = total ? ((count/total)*100).toFixed(1) : '0.0';
+              return `${item.label}: ${count.toLocaleString('th-TH')} รายการ (${pct}%)`;
             }
           }
         }
@@ -945,7 +1029,7 @@ function exportExcel(){
   const ws = XLSX.utils.json_to_sheet(data);
   ws['!cols'] = [ {wch:8}, {wch:18}, {wch:20}, {wch:40}, {wch:30}, {wch:16}, {wch:16} ];
   const wb = XLSX.utils.book_new();
-  XLS.utils.book_append_sheet(wb, ws, 'รายงานปัญหา');
+  XLSX.utils.book_append_sheet(wb, ws, 'รายงานปัญหา');
 
   const dateStamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
   XLSX.writeFile(wb, `รายงานปัญหารายจังหวัด_${dateStamp}.xlsx`);
