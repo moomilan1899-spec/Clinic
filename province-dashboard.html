@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ระบบคลีนิค คลีนิค 1</title>
+<title>ระบบคลีนิค</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -204,7 +204,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#C7A252" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/><path d="M12 8l2.5 2.5L12 16l-2.5-2.5z" fill="#C7A252" stroke="none"/></svg>
       </div>
       <div>
-        <h1>ระบบคลีนิค คลีนิค1 </h1>
+        <h1>ระบบคลีนิค</h1>
         <p id="lastSync">ยังไม่ได้ซิงค์ข้อมูล</p>
       </div>
     </div>
@@ -665,18 +665,24 @@ async function submitNewRow(){
   }
 
   try{
-    await fetch(CONFIG.scriptUrl, {
+    const res = await fetch(CONFIG.scriptUrl, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         action: 'add', no: String(nextNo), province, date, problem, progress, status
       }).toString()
     });
-    toast('ส่งข้อมูลไปยัง Google ชีตแล้ว กำลังซิงค์ (อาจใช้เวลาสักครู่)...');
+    const text = await res.text();
+    let ok = res.ok;
+    try{ const json = JSON.parse(text); ok = ok && json.result === 'success'; }catch(_e){ /* non-JSON response */ }
+    if(ok){
+      toast('บันทึกลง Google ชีตสำเร็จ กำลังซิงค์ (อาจใช้เวลาสักครู่)...');
+    }else{
+      toast('Apps Script ตอบกลับผิดปกติ: ' + text.slice(0,120));
+    }
     setTimeout(fetchData, 5000);
   }catch(e){
-    toast('ส่งข้อมูลไปยัง Google ชีตไม่สำเร็จ — ข้อมูลยังแสดงชั่วคราวในหน้านี้');
+    toast('เชื่อมต่อ Apps Script ไม่สำเร็จ: ' + e.message + ' — ข้อมูลยังแสดงชั่วคราวในหน้านี้');
   }
 }
 
@@ -701,9 +707,8 @@ async function updateExistingRow(no, fields){
   }
 
   try{
-    await fetch(CONFIG.scriptUrl, {
+    const res = await fetch(CONFIG.scriptUrl, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         action: 'update', no: String(no),
@@ -711,10 +716,17 @@ async function updateExistingRow(no, fields){
         progress: fields.progress, status: fields.status
       }).toString()
     });
-    toast('ส่งการแก้ไขไปยัง Google ชีตแล้ว กำลังซิงค์ (อาจใช้เวลาสักครู่)...');
+    const text = await res.text();
+    let ok = res.ok;
+    try{ const json = JSON.parse(text); ok = ok && json.result === 'success'; }catch(_e){ /* non-JSON response */ }
+    if(ok){
+      toast('แก้ไขใน Google ชีตสำเร็จ กำลังซิงค์ (อาจใช้เวลาสักครู่)...');
+    }else{
+      toast('Apps Script ตอบกลับผิดปกติ: ' + text.slice(0,120));
+    }
     setTimeout(fetchData, 5000);
   }catch(e){
-    toast('ส่งการแก้ไขไปยัง Google ชีตไม่สำเร็จ — ข้อมูลยังแก้ไขชั่วคราวในหน้านี้');
+    toast('เชื่อมต่อ Apps Script ไม่สำเร็จ: ' + e.message + ' — ข้อมูลยังแก้ไขชั่วคราวในหน้านี้');
   }
 }
 
