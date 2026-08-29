@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ระบบคลีนิค </title>
+<title>ระบบคลีนิค</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -37,6 +37,35 @@
   body{min-height:100vh;}
   ::selection{background:var(--brass-soft);color:var(--text);}
   .app{max-width:1400px;margin:0 auto;padding:20px 22px 60px;}
+
+  /* ---------- Shell / Sidebar navigation ---------- */
+  .shell{display:flex;min-height:100vh;}
+  .sidebar{
+    width:72px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 0;
+    position:sticky;top:0;height:100vh;
+  }
+  .sidebar-logo{
+    width:38px;height:38px;border-radius:50%;border:2px solid var(--brass);
+    display:flex;align-items:center;justify-content:center;margin-bottom:14px;background:var(--brass-soft);flex-shrink:0;
+  }
+  .sidebar-logo svg{width:20px;height:20px;}
+  .nav-icon{
+    width:48px;height:48px;border-radius:12px;border:1px solid transparent;background:none;
+    color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;transition:all .15s ease;
+  }
+  .nav-icon svg{width:20px;height:20px;}
+  .nav-icon span{font-size:9.5px;font-weight:600;letter-spacing:0.2px;}
+  .nav-icon:hover{background:var(--panel-2);color:var(--text);}
+  .nav-icon.active{background:var(--brass-soft);color:var(--brass);border-color:var(--brass);}
+  .content{flex:1;min-width:0;}
+
+  .page{display:none;}
+  .page.active{display:block;}
+
+  /* ---------- Vertical stack (map above table, full width) ---------- */
+  .stack{display:flex;flex-direction:column;gap:16px;}
 
   /* ---------- Topbar ---------- */
   .topbar{
@@ -95,10 +124,9 @@
   .stat-card.done .num{color:var(--green);}
   .stat-card.overdue .num{color:#E85D5D;}
 
-  /* ---------- Main grid ---------- */
-  .main-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;align-items:start;}
-  @media (max-width:980px){ .main-grid{grid-template-columns:1fr;} .stats{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:980px){ .stats{grid-template-columns:repeat(2,1fr);} }
   @media (min-width:981px) and (max-width:1240px){ .stats{grid-template-columns:repeat(3,1fr);} }
+  @media (max-width:640px){ .sidebar{width:60px;} .nav-icon{width:40px;height:40px;} }
 
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
   .panel-head{
@@ -109,10 +137,15 @@
   .panel-head .hint{font-size:11.5px;color:var(--muted-dim);}
 
   /* ---------- Map ---------- */
-  #map{height:520px;width:100%;background:#0c151d;}
-  .legend-row{display:flex;gap:14px;padding:12px 18px;flex-wrap:wrap;border-top:1px solid var(--line-soft);}
+  #map{height:78vh;min-height:560px;width:100%;background:#0c151d;}
+  .legend-row{display:flex;align-items:center;gap:14px;padding:12px 18px;flex-wrap:wrap;border-top:1px solid var(--line-soft);}
   .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);}
   .dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
+  .heat-legend{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted);}
+  .heat-legend-bar{
+    width:140px;height:10px;border-radius:6px;
+    background:linear-gradient(90deg,#1f3d5c 0%,#2f7bd6 25%,#3fc0c0 50%,#e0d24a 75%,#e0455a 100%);
+  }
   .leaflet-popup-content-wrapper{background:var(--panel-2);color:var(--text);border-radius:10px;font-family:'Sarabun',sans-serif;}
   .leaflet-popup-tip{background:var(--panel-2);}
   .leaflet-popup-content{margin:12px 14px;font-size:13px;line-height:1.5;}
@@ -167,10 +200,47 @@
     border-radius:20px;padding:2px 8px;margin-left:6px;white-space:nowrap;
   }
 
-  /* ---------- Chart panel ---------- */
-  .chart-panel{margin-top:16px;}
-  .chart-body{padding:18px;height:380px;position:relative;}
-  #topProvinceChart{max-height:100%;}
+  /* ---------- Calendar page ---------- */
+  .calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap;}
+  .calendar-nav{display:flex;align-items:center;gap:10px;}
+  .calendar-nav-btn{
+    width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);
+    color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;
+  }
+  .calendar-nav-btn:hover{border-color:var(--brass);background:var(--brass-soft);}
+  .calendar-nav-btn svg{width:16px;height:16px;}
+  .calendar-month-label{font-family:'Chakra Petch',sans-serif;font-size:16px;font-weight:600;min-width:160px;text-align:center;}
+  .calendar-today-btn{
+    font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--muted);cursor:pointer;
+  }
+  .calendar-today-btn:hover{border-color:var(--brass);color:var(--brass);}
+  .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);}
+  .calendar-weekday{
+    text-align:center;font-size:12px;font-weight:700;color:var(--muted-dim);padding:10px 4px;
+    border-bottom:1px solid var(--line-soft);letter-spacing:0.3px;
+  }
+  .calendar-cell{
+    min-height:92px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);
+    padding:8px;cursor:pointer;transition:background .12s;position:relative;display:flex;flex-direction:column;gap:6px;
+  }
+  .calendar-cell:hover{background:var(--panel-2);}
+  .calendar-cell.empty{cursor:default;background:rgba(0,0,0,0.12);}
+  .calendar-cell.empty:hover{background:rgba(0,0,0,0.12);}
+  .calendar-cell.today{background:rgba(199,162,82,0.08);}
+  .calendar-cell.selected{outline:2px solid var(--brass);outline-offset:-2px;}
+  .calendar-daynum{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--muted);}
+  .calendar-cell.today .calendar-daynum{color:var(--brass);font-weight:700;}
+  .calendar-badges{display:flex;flex-wrap:wrap;gap:3px;}
+  .calendar-badge{
+    font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;white-space:nowrap;
+  }
+  .calendar-badge.รอดำเนินการ{color:var(--red);background:var(--red-soft);}
+  .calendar-badge.กำลังดำเนินการ{color:var(--amber);background:var(--amber-soft);}
+  .calendar-badge.เสร็จสิ้น{color:var(--green);background:var(--green-soft);}
+  @media (max-width:640px){ .calendar-cell{min-height:64px;padding:5px;} .calendar-weekday{font-size:10px;padding:6px 2px;} }
+
+  .day-detail-panel{margin-top:16px;}
 
   .rows-wrap{max-height:465px;overflow-y:auto;}
   .row-item{padding:13px 18px;border-bottom:1px solid var(--line-soft);cursor:pointer;transition:background .12s;}
@@ -234,6 +304,22 @@
 </head>
 <body>
 
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#C7A252" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/><path d="M12 8l2.5 2.5L12 16l-2.5-2.5z" fill="#C7A252" stroke="none"/></svg>
+    </div>
+    <button class="nav-icon active" data-page="home" title="หน้าแรก">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9.5a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+      <span>หน้าแรก</span>
+    </button>
+    <button class="nav-icon" data-page="calendar" title="ปฏิทิน">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+      <span>ปฏิทิน</span>
+    </button>
+  </nav>
+
+  <div class="content">
 <div class="app">
 
   <div class="topbar">
@@ -242,7 +328,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#C7A252" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/><path d="M12 8l2.5 2.5L12 16l-2.5-2.5z" fill="#C7A252" stroke="none"/></svg>
       </div>
       <div>
-        <h1>ระบบคลีนิค V1.2 by คนหล่อคนเท่</h1>
+        <h1>ระบบคลีนิค</h1>
         <p id="lastSync">ยังไม่ได้ซิงค์ข้อมูล</p>
       </div>
     </div>
@@ -262,6 +348,9 @@
     </div>
   </div>
 
+  <!-- ============ PAGE: HOME ============ -->
+  <div id="page-home" class="page active">
+
   <div class="stats">
     <div class="stat-card total"><div class="num" id="statTotal">0</div><div class="lbl">รายการทั้งหมด</div></div>
     <div class="stat-card wait"><div class="num" id="statWait">0</div><div class="lbl">รอดำเนินการ</div></div>
@@ -270,18 +359,20 @@
     <div class="stat-card overdue"><div class="num" id="statOverdue">0</div><div class="lbl">ค้างเกิน 3 วัน</div></div>
   </div>
 
-  <div class="main-grid">
+  <div class="stack">
     <div class="panel">
       <div class="panel-head">
-        <h2>แผนที่สถานะรายจังหวัด</h2>
+        <h2>แผนที่ความหนาแน่นการแจ้งปัญหา</h2>
         <span class="hint">คลิกจุดเพื่อดูรายละเอียด</span>
       </div>
       <div id="map"></div>
       <div class="legend-row">
-        <span class="legend-item"><span class="dot" style="background:#D1495B"></span>รอดำเนินการ</span>
-        <span class="legend-item"><span class="dot" style="background:#E0A458"></span>กำลังดำเนินการ</span>
-        <span class="legend-item"><span class="dot" style="background:#4FB286"></span>เสร็จสิ้น</span>
-        <span class="legend-item"><span class="dot" style="background:#4A5C6C"></span>ยังไม่มีข้อมูล</span>
+        <div class="heat-legend">
+          <span>น้อย</span>
+          <span class="heat-legend-bar"></span>
+          <span>มาก</span>
+        </div>
+        <span class="legend-item" style="margin-left:auto;">ความเข้มของสีแสดงจำนวนรายการที่แจ้งเข้ามาต่อจังหวัด</span>
       </div>
     </div>
 
@@ -313,25 +404,50 @@
           <button class="date-clear-btn" id="btnClearDate" title="ล้างตัวกรองวันที่">ล้างวันที่ ✕</button>
         </div>
       </div>
-      <div class="rows-wrap" id="rowsWrap">
+      <div class="rows-wrap" id="rowsWrap" style="max-height:600px;">
         <div class="empty-state">กำลังโหลดข้อมูล...</div>
       </div>
     </div>
   </div>
+  </div> <!-- /page-home -->
 
-  <div class="panel chart-panel">
-    <div class="panel-head">
-      <h2>จังหวัดที่แจ้งปัญหาเข้ามามากที่สุด</h2>
-      <span class="hint">สัดส่วนตามจำนวนรายการที่แจ้งเข้ามา</span>
+  <!-- ============ PAGE: CALENDAR ============ -->
+  <div id="page-calendar" class="page">
+    <div class="panel">
+      <div class="calendar-toolbar">
+        <div class="calendar-nav">
+          <button class="calendar-nav-btn" id="calPrev" title="เดือนก่อนหน้า">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <span class="calendar-month-label" id="calMonthLabel">-</span>
+          <button class="calendar-nav-btn" id="calNext" title="เดือนถัดไป">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </div>
+        <button class="calendar-today-btn" id="calToday">วันนี้</button>
+      </div>
+      <div class="calendar-grid" id="calWeekdays"></div>
+      <div class="calendar-grid" id="calDays"></div>
     </div>
-    <div class="chart-body">
-      <canvas id="topProvinceChart"></canvas>
+
+    <div class="panel day-detail-panel">
+      <div class="panel-head">
+        <h2 id="dayDetailTitle">เลือกวันที่เพื่อดูรายการ</h2>
+        <span class="hint" id="dayDetailCount"></span>
+      </div>
+      <div class="rows-wrap" id="dayDetailWrap" style="max-height:none;">
+        <div class="empty-state">คลิกวันที่ในปฏิทินเพื่อดูรายการปัญหาของวันนั้น</div>
+      </div>
     </div>
   </div>
+
 </div>
+  </div> <!-- /content -->
+</div> <!-- /shell -->
 
 <!-- Insert Modal -->
 <div class="overlay" id="addOverlay">
+
   <div class="modal">
     <div class="modal-head">
       <h3 id="addModalTitle">เพิ่มข้อมูลปัญหา</h3>
@@ -407,21 +523,16 @@ const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyAjlI_XM4x6
 
 const PROVINCES = [{"name": "กระบี่", "lat": 8.0862997, "lng": 98.90628349999997}, {"name": "กรุงเทพมหานคร", "lat": 13.7278956, "lng": 100.52412349999997}, {"name": "กาญจนบุรี", "lat": 14.0227797, "lng": 99.53281149999998}, {"name": "กาฬสินธุ์", "lat": 16.4314078, "lng": 103.5058755}, {"name": "กำแพงเพชร", "lat": 16.4827798, "lng": 99.52266179999992}, {"name": "ขอนแก่น", "lat": 16.4419355, "lng": 102.8359921}, {"name": "จันทบุรี", "lat": 12.61134, "lng": 102.10385459999998}, {"name": "ฉะเชิงเทรา", "lat": 13.6904194, "lng": 101.07795959999999}, {"name": "ชลบุรี", "lat": 13.3611431, "lng": 100.98467170000004}, {"name": "ชัยนาท", "lat": 15.1851971, "lng": 100.12512500000003}, {"name": "ชัยภูมิ", "lat": 15.8068173, "lng": 102.03150270000003}, {"name": "ชุมพร", "lat": 10.4930496, "lng": 99.18001989999993}, {"name": "ตรัง", "lat": 7.5593851, "lng": 99.61100650000003}, {"name": "ตราด", "lat": 12.2427563, "lng": 102.51747339999997}, {"name": "ตาก", "lat": 16.8839901, "lng": 99.12584979999997}, {"name": "นครนายก", "lat": 14.2069466, "lng": 101.21305110000003}, {"name": "นครปฐม", "lat": 13.8199206, "lng": 100.06216760000007}, {"name": "นครพนม", "lat": 17.392039, "lng": 104.76955079999993}, {"name": "นครราชสีมา", "lat": 14.9798997, "lng": 102.09776929999998}, {"name": "นครศรีธรรมราช", "lat": 8.4303975, "lng": 99.96312190000003}, {"name": "นครสวรรค์", "lat": 15.6930072, "lng": 100.12255949999997}, {"name": "นนทบุรี", "lat": 13.8621125, "lng": 100.51435279999998}, {"name": "นราธิวาส", "lat": 6.4254607, "lng": 101.82531429999995}, {"name": "น่าน", "lat": 18.7756318, "lng": 100.77304170000002}, {"name": "บึงกาฬ", "lat": 18.3609104, "lng": 103.64644629999998}, {"name": "บุรีรัมย์", "lat": 14.9930017, "lng": 103.10291910000001}, {"name": "ปทุมธานี", "lat": 14.0208391, "lng": 100.52502759999993}, {"name": "ประจวบคีรีขันธ์", "lat": 11.812367, "lng": 99.79732709999996}, {"name": "ปราจีนบุรี", "lat": 14.0509704, "lng": 101.37274389999993}, {"name": "ปัตตานี", "lat": 6.869484399999999, "lng": 101.25048259999994}, {"name": "พระนครศรีอยุธยา", "lat": 14.3532128, "lng": 100.56895989999998}, {"name": "พะเยา", "lat": 19.1664789, "lng": 99.9019419}, {"name": "พังงา", "lat": 8.4407456, "lng": 98.51930319999997}, {"name": "พัทลุง", "lat": 7.6166823, "lng": 100.07402309999998}, {"name": "พิจิตร", "lat": 16.4429516, "lng": 100.34823289999997}, {"name": "พิษณุโลก", "lat": 16.8298048, "lng": 100.26149150000003}, {"name": "ภูเก็ต", "lat": 7.9810496, "lng": 98.36388239999997}, {"name": "มหาสารคาม", "lat": 16.1850896, "lng": 103.30264609999995}, {"name": "มุกดาหาร", "lat": 16.542443, "lng": 104.72091509999996}, {"name": "ยะลา", "lat": 6.541147, "lng": 101.28039469999999}, {"name": "ยโสธร", "lat": 15.792641, "lng": 104.14528270000005}, {"name": "ระนอง", "lat": 9.9528702, "lng": 98.60846409999999}, {"name": "ระยอง", "lat": 12.6833115, "lng": 101.23742949999996}, {"name": "ราชบุรี", "lat": 13.5282893, "lng": 99.81342110000003}, {"name": "ร้อยเอ็ด", "lat": 16.0538196, "lng": 103.65200359999994}, {"name": "ลพบุรี", "lat": 14.7995081, "lng": 100.65337060000002}, {"name": "ลำปาง", "lat": 18.2888404, "lng": 99.49087399999996}, {"name": "ลำพูน", "lat": 18.5744606, "lng": 99.0087221}, {"name": "ศรีสะเกษ", "lat": 15.1186009, "lng": 104.32200949999992}, {"name": "สกลนคร", "lat": 17.1545995, "lng": 104.1348365}, {"name": "สงขลา", "lat": 7.1756004, "lng": 100.61434699999995}, {"name": "สตูล", "lat": 6.6238158, "lng": 100.06737440000006}, {"name": "สมุทรปราการ", "lat": 13.5990961, "lng": 100.59983190000003}, {"name": "สมุทรสงคราม", "lat": 13.4098217, "lng": 100.00226450000002}, {"name": "สมุทรสาคร", "lat": 13.5475216, "lng": 100.27439559999993}, {"name": "สระบุรี", "lat": 14.5289154, "lng": 100.91014210000003}, {"name": "สระแก้ว", "lat": 13.824038, "lng": 102.0645839}, {"name": "สิงห์บุรี", "lat": 14.8936253, "lng": 100.39673140000002}, {"name": "สุพรรณบุรี", "lat": 14.4744892, "lng": 100.11771279999994}, {"name": "สุราษฎร์ธานี", "lat": 9.1382389, "lng": 99.32174829999997}, {"name": "สุรินทร์", "lat": 14.882905, "lng": 103.49371070000007}, {"name": "สุโขทัย", "lat": 17.0055573, "lng": 99.82637120000004}, {"name": "หนองคาย", "lat": 17.8782803, "lng": 102.74126380000007}, {"name": "หนองบัวลำภู", "lat": 17.2218247, "lng": 102.42603680000002}, {"name": "อำนาจเจริญ", "lat": 15.8656783, "lng": 104.62577740000006}, {"name": "อุดรธานี", "lat": 17.4138413, "lng": 102.78723250000007}, {"name": "อุตรดิตถ์", "lat": 17.6200886, "lng": 100.09929420000003}, {"name": "อุทัยธานี", "lat": 15.3835001, "lng": 100.02455269999996}, {"name": "อุบลราชธานี", "lat": 15.2286861, "lng": 104.85642170000006}, {"name": "อ่างทอง", "lat": 14.5896054, "lng": 100.45505200000002}, {"name": "เชียงราย", "lat": 19.9071656, "lng": 99.83095500000002}, {"name": "เชียงใหม่", "lat": 18.7877477, "lng": 98.99313110000003}, {"name": "เพชรบุรี", "lat": 13.1111601, "lng": 99.93913069999996}, {"name": "เพชรบูรณ์", "lat": 16.4189807, "lng": 101.15509259999999}, {"name": "เลย", "lat": 17.4860232, "lng": 101.72230020000006}, {"name": "แพร่", "lat": 18.1445774, "lng": 100.14028310000003}, {"name": "แม่ฮ่องสอน", "lat": 19.2990643, "lng": 97.96562259999996}];
 
-const STATUS_COLORS = {
-  "รอดำเนินการ": "#D1495B",
-  "กำลังดำเนินการ": "#E0A458",
-  "เสร็จสิ้น": "#4FB286",
-  "_none": "#4A5C6C"
-};
-
 let CONFIG = { csvUrl: DEFAULT_CSV_URL, scriptUrl: DEFAULT_SCRIPT_URL };
 let allRows = [];      // rows from the published sheet
 let pendingRows = [];  // rows added locally, not yet confirmed in the sheet
 let activeStatusFilter = "all";
 let overdueOnly = false;
 let editingNo = null; // when set, the add/edit modal is in "edit" mode for this row's No.
-let map, markersLayer;
-let topProvinceChart = null;
+let map, heatLayer, clickLayer;
+let currentPage = "home";
+let calYear, calMonth; // 0-indexed month for the calendar page
+let calSelectedDate = null; // "YYYY-MM-DD" of the selected day, or null
 
 function normalize(s){ return (s||"").toString().trim(); }
 function normalizeProvince(s){
@@ -660,21 +771,21 @@ function renderAll(){
   renderStats(combinedRows());
   renderRows();
   renderMap();
-  renderChart();
+  if(currentPage === 'calendar'){ renderCalendar(); }
 }
 
-// ---------- Map ----------
+// ---------- Map (heatmap by report count) ----------
 function initMap(){
   map = L.map('map', { scrollWheelZoom:false }).setView([13.4, 101.2], 5.6);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OpenStreetMap &copy; CARTO',
     subdomains: 'abcd', maxZoom: 12
   }).addTo(map);
-  markersLayer = L.layerGroup().addTo(map);
+  heatLayer = L.heatLayer([], { radius: 38, blur: 30, maxZoom: 8, minOpacity: 0.35 }).addTo(map);
+  clickLayer = L.layerGroup().addTo(map);
 }
 
 function renderMap(){
-  markersLayer.clearLayers();
   const rows = combinedRows();
   const byProvince = {};
   rows.forEach(r=>{
@@ -682,100 +793,168 @@ function renderMap(){
     byProvince[r.province].push(r);
   });
 
+  const counts = Object.values(byProvince).map(arr => arr.length);
+  const maxCount = counts.length ? Math.max(...counts) : 1;
+
+  const heatPoints = [];
+  clickLayer.clearLayers();
+
   PROVINCES.forEach(p=>{
     const issues = byProvince[p.name] || [];
-    let color = STATUS_COLORS._none;
-    let radius = 5;
-    if(issues.length){
-      const hasWait = issues.some(i=>i.status==='รอดำเนินการ');
-      const hasDoing = issues.some(i=>i.status==='กำลังดำเนินการ');
-      color = hasWait ? STATUS_COLORS['รอดำเนินการ'] : (hasDoing ? STATUS_COLORS['กำลังดำเนินการ'] : STATUS_COLORS['เสร็จสิ้น']);
-      radius = 7 + Math.min(issues.length,5);
-    }
+    if(issues.length === 0) return;
+
+    // intensity normalized 0-1 relative to the busiest province, with a floor so single reports still show
+    const intensity = Math.max(0.25, issues.length / maxCount);
+    heatPoints.push([p.lat, p.lng, intensity]);
+
+    // invisible click target so people can still tap a province for details
     const marker = L.circleMarker([p.lat, p.lng], {
-      radius, color:'#0F1A24', weight:1.5, fillColor: color, fillOpacity: 0.9
+      radius: 14, weight: 0, fillOpacity: 0, opacity: 0
     });
-    let popupHtml = `<div class="popup-title">${escapeHtml(p.name)}</div>`;
-    if(issues.length===0){
-      popupHtml += `<div style="color:#8FA2B3;">ยังไม่มีรายงานปัญหา</div>`;
-    }else{
-      issues.forEach(i=>{
-        popupHtml += `<div class="popup-issue">
-          <span class="popup-badge status-badge ${statusBadgeClass(i.status)}">${escapeHtml(i.status)}</span>
-          <div>${escapeHtml(i.problem||'-')}</div>
-          ${i.progress ? `<div style="color:#8FA2B3;font-size:12px;">คืบหน้า: ${escapeHtml(i.progress)}</div>` : ''}
-          ${i.date ? `<div style="color:#8FA2B3;font-size:11px;">🕒 ${formatDateDisplay(i.date)}</div>` : ''}
-        </div>`;
-      });
-    }
+    let popupHtml = `<div class="popup-title">${escapeHtml(p.name)} — ${issues.length} รายการ</div>`;
+    issues.forEach(i=>{
+      popupHtml += `<div class="popup-issue">
+        <span class="popup-badge status-badge ${statusBadgeClass(i.status)}">${escapeHtml(i.status)}</span>
+        <div>${escapeHtml(i.problem||'-')}</div>
+        ${i.progress ? `<div style="color:#8FA2B3;font-size:12px;">คืบหน้า: ${escapeHtml(i.progress)}</div>` : ''}
+        ${i.date ? `<div style="color:#8FA2B3;font-size:11px;">🕒 ${formatDateDisplay(i.date)}</div>` : ''}
+      </div>`;
+    });
     marker.bindPopup(popupHtml);
     marker.provinceName = p.name;
-    marker.addTo(markersLayer);
+    marker.addTo(clickLayer);
   });
+
+  heatLayer.setLatLngs(heatPoints);
 }
 
 function focusProvinceOnMap(name){
   const p = PROVINCES.find(pp=>pp.name===name);
   if(!p) return;
+  if(currentPage !== 'home'){ switchPage('home'); }
   map.flyTo([p.lat,p.lng], 8, {duration:0.6});
-  markersLayer.eachLayer(m=>{
+  clickLayer.eachLayer(m=>{
     if(m.provinceName===name){ m.openPopup(); }
   });
 }
 
-// ---------- Chart: top provinces by report count ----------
-const CHART_PALETTE = ['#C7A252','#D1495B','#E0A458','#4FB286','#5B8FD1','#B07CC6','#D18C5B','#6FBFB0','#A9A356','#7A8FA6'];
-function renderChart(){
+// ---------- Page navigation ----------
+function switchPage(page){
+  currentPage = page;
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('.nav-icon').forEach(btn => btn.classList.toggle('active', btn.dataset.page === page));
+  if(page === 'home'){
+    setTimeout(() => { if(map) map.invalidateSize(); }, 50);
+  }
+  if(page === 'calendar'){
+    if(calYear === undefined){
+      const now = new Date();
+      calYear = now.getFullYear();
+      calMonth = now.getMonth();
+    }
+    renderCalendar();
+  }
+}
+
+// ---------- Calendar page ----------
+const THAI_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+const THAI_WEEKDAYS = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+
+function dateKey(y,m,d){ return `${y}-${pad2(m+1)}-${pad2(d)}`; }
+
+function renderCalendar(){
+  document.getElementById('calMonthLabel').textContent = `${THAI_MONTHS[calMonth]} ${calYear}`;
+
+  const weekdaysEl = document.getElementById('calWeekdays');
+  weekdaysEl.innerHTML = THAI_WEEKDAYS.map(w => `<div class="calendar-weekday">${w}</div>`).join('');
+
+  // group rows by day (YYYY-MM-DD) using parsed date
   const rows = combinedRows();
-  const counts = {};
-  rows.forEach(r=>{ counts[r.province] = (counts[r.province]||0) + 1; });
-  const entries = Object.entries(counts).sort((a,b)=> b[1]-a[1]);
+  const byDay = {};
+  rows.forEach(r=>{
+    const d = parseStoredDate(r.date);
+    if(!d) return;
+    const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    (byDay[key] = byDay[key] || []).push(r);
+  });
 
-  const TOP_N = 7;
-  const top = entries.slice(0, TOP_N);
-  const restTotal = entries.slice(TOP_N).reduce((s,[,c])=>s+c, 0);
-  const labels = top.map(([name])=>name);
-  const values = top.map(([,c])=>c);
-  if(restTotal > 0){ labels.push('อื่นๆ'); values.push(restTotal); }
+  const firstOfMonth = new Date(calYear, calMonth, 1);
+  const startWeekday = firstOfMonth.getDay(); // 0=Sun
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const today = new Date();
+  const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
 
-  const ctx = document.getElementById('topProvinceChart').getContext('2d');
-  if(topProvinceChart){ topProvinceChart.destroy(); }
+  const cells = [];
+  for(let i=0;i<startWeekday;i++){ cells.push('<div class="calendar-cell empty"></div>'); }
+  for(let day=1; day<=daysInMonth; day++){
+    const key = dateKey(calYear, calMonth, day);
+    const dayRows = byDay[key] || [];
+    const isToday = key === todayKey;
+    const isSelected = key === calSelectedDate;
+    const badgeCounts = {};
+    dayRows.forEach(r => { badgeCounts[r.status] = (badgeCounts[r.status]||0) + 1; });
+    const badgesHtml = Object.entries(badgeCounts).map(([status,count]) =>
+      `<span class="calendar-badge ${statusBadgeClass(status)}">${count}</span>`
+    ).join('');
+    cells.push(`
+      <div class="calendar-cell${isToday?' today':''}${isSelected?' selected':''}" data-date="${key}">
+        <span class="calendar-daynum">${day}</span>
+        <div class="calendar-badges">${badgesHtml}</div>
+      </div>
+    `);
+  }
+  document.getElementById('calDays').innerHTML = cells.join('');
 
-  if(entries.length === 0){
-    topProvinceChart = null;
+  document.querySelectorAll('.calendar-cell[data-date]').forEach(cell=>{
+    cell.addEventListener('click', () => selectCalendarDay(cell.dataset.date, byDay[cell.dataset.date] || []));
+  });
+
+  // keep the detail panel in sync if a day is already selected
+  if(calSelectedDate){ selectCalendarDay(calSelectedDate, byDay[calSelectedDate] || [], true); }
+}
+
+function selectCalendarDay(key, dayRows, skipRerender){
+  calSelectedDate = key;
+  if(!skipRerender){ renderCalendar(); return; } // re-render to update .selected highlight, which re-enters here with skipRerender
+
+  const d = new Date(key + 'T00:00:00');
+  document.getElementById('dayDetailTitle').textContent = 'รายการวันที่ ' + d.toLocaleDateString('th-TH', { day:'numeric', month:'long', year:'numeric' });
+  document.getElementById('dayDetailCount').textContent = dayRows.length + ' รายการ';
+
+  const wrap = document.getElementById('dayDetailWrap');
+  if(dayRows.length === 0){
+    wrap.innerHTML = '<div class="empty-state">ไม่มีรายการในวันนี้</div>';
     return;
   }
+  wrap.innerHTML = dayRows.map(r=>{
+    const overdue = isOverdue(r);
+    return `
+    <div class="row-item" data-province="${escapeHtml(r.province)}" data-no="${escapeHtml(String(r.no||''))}">
+      <div class="row-top">
+        <span class="row-province">${escapeHtml(r.province)}</span>
+        <div class="row-top-right">
+          <span class="status-badge ${statusBadgeClass(r.status)}">${escapeHtml(r.status)}</span>
+          <button class="row-edit-btn" data-edit-no="${escapeHtml(String(r.no||''))}" title="แก้ไขข้อมูล">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="row-problem">${escapeHtml(r.problem||'-')}${overdue ? `<span class="overdue-badge">⚠ ค้าง ${overdueDaysCount(r)} วัน</span>` : ''}</div>
+      ${r.progress ? `<div class="row-progress">ความคืบหน้า: ${escapeHtml(r.progress)}</div>` : ''}
+      <div class="row-meta">
+        ${r.date ? `<span class="row-date">🕒 ${formatDateDisplay(r.date)}</span>` : ''}
+        <span class="row-no">No. ${escapeHtml(String(r.no||''))}</span>
+      </div>
+    </div>
+  `;
+  }).join('');
 
-  topProvinceChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: labels.map((_,i)=> CHART_PALETTE[i % CHART_PALETTE.length]),
-        borderColor: '#16232F',
-        borderWidth: 2
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: { color: '#E9EEF2', font: { family: 'Sarabun', size: 12.5 }, padding: 12 }
-        },
-        tooltip: {
-          callbacks: {
-            label: function(item){
-              const total = values.reduce((a,b)=>a+b,0);
-              const pct = total ? ((item.parsed/total)*100).toFixed(1) : 0;
-              return `${item.label}: ${item.parsed} รายการ (${pct}%)`;
-            }
-          }
-        }
-      }
-    }
+  wrap.querySelectorAll('.row-edit-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openEditModal(btn.dataset.editNo);
+    });
   });
 }
 
@@ -989,6 +1168,25 @@ document.getElementById('btnClearDate').addEventListener('click', ()=>{
 });
 
 document.getElementById('btnExport').addEventListener('click', exportExcel);
+
+document.querySelectorAll('.nav-icon[data-page]').forEach(btn=>{
+  btn.addEventListener('click', ()=> switchPage(btn.dataset.page));
+});
+
+document.getElementById('calPrev').addEventListener('click', ()=>{
+  calMonth--; if(calMonth < 0){ calMonth = 11; calYear--; }
+  renderCalendar();
+});
+document.getElementById('calNext').addEventListener('click', ()=>{
+  calMonth++; if(calMonth > 11){ calMonth = 0; calYear++; }
+  renderCalendar();
+});
+document.getElementById('calToday').addEventListener('click', ()=>{
+  const now = new Date();
+  calYear = now.getFullYear();
+  calMonth = now.getMonth();
+  renderCalendar();
+});
 
 [['addOverlay'],['settingsOverlay']].forEach(([id])=>{
   document.getElementById(id).addEventListener('click', (e)=>{
