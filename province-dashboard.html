@@ -12,6 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#0F1A24;
@@ -131,6 +132,7 @@
   @media (max-width:980px){ .stats{grid-template-columns:repeat(2,1fr);} }
   @media (min-width:981px) and (max-width:1240px){ .stats{grid-template-columns:repeat(3,1fr);} }
   @media (max-width:640px){ .sidebar{width:60px;} .nav-icon{width:40px;height:40px;} }
+  @media (max-width:900px){ #page-summary .stack[style*="grid-template-columns"]{grid-template-columns:1fr !important;} }
 
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
   .panel-head{
@@ -323,6 +325,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
       <span>ปฏิทิน</span>
     </button>
+    <button class="nav-icon" data-page="summary" title="สรุปข้อมูล">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V10M10 19V5M16 19v-7M20 19H4"/></svg>
+      <span>สรุปข้อมูล</span>
+    </button>
   </nav>
 
   <div class="content">
@@ -455,7 +461,66 @@
         <div class="empty-state">ไม่มีรายการที่ขาดวันที่</div>
       </div>
     </div>
-  </div>
+  </div> <!-- /page-calendar -->
+
+  <!-- ============ PAGE: SUMMARY ============ -->
+  <div id="page-summary" class="page">
+
+    <div class="stats" id="summaryKpiCards">
+      <div class="stat-card total"><div class="num" id="sumTotal">0</div><div class="lbl">รายการทั้งหมด</div></div>
+      <div class="stat-card done"><div class="num" id="sumResolvedPct">0%</div><div class="lbl">แก้ไขเสร็จสิ้นแล้ว</div></div>
+      <div class="stat-card overdue"><div class="num" id="sumOverdue">0</div><div class="lbl">ค้างเกิน 3 วัน</div></div>
+      <div class="stat-card wait"><div class="num" id="sumAvgDays">-</div><div class="lbl">เฉลี่ยวันที่ใช้แก้ไข (วัน)</div></div>
+      <div class="stat-card doing"><div class="num" id="sumTopProvince" style="font-size:18px;">-</div><div class="lbl">จังหวัดแจ้งเข้ามามากที่สุด</div></div>
+    </div>
+
+    <div class="stack" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>สัดส่วนรายงานตามจังหวัด</h2>
+          <span class="hint">Top 7 + อื่นๆ</span>
+        </div>
+        <div class="chart-body" style="height:340px;padding:18px;">
+          <canvas id="provinceProportionChart"></canvas>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>สัดส่วนตามสถานะ</h2>
+          <span class="hint">รอ / กำลังทำ / เสร็จสิ้น</span>
+        </div>
+        <div class="chart-body" style="height:340px;padding:18px;">
+          <canvas id="statusProportionChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head">
+        <h2>แนวโน้มจำนวนรายการที่แจ้งเข้ามา</h2>
+        <span class="hint">รายวัน ย้อนหลัง 30 วัน</span>
+      </div>
+      <div class="chart-body" style="height:280px;padding:18px;">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head">
+        <h2>แผนที่จำนวนรายงานตามจังหวัด</h2>
+        <span class="hint">สีเข้มขึ้น = รายงานเข้ามามากขึ้น</span>
+      </div>
+      <div id="summaryMap" style="height:420px;width:100%;background:#0c151d;"></div>
+      <div class="legend-row">
+        <div class="heat-legend">
+          <span>น้อย</span>
+          <span class="heat-legend-bar"></span>
+          <span>มาก</span>
+        </div>
+      </div>
+    </div>
+
+  </div> <!-- /page-summary -->
 
 </div>
   </div> <!-- /content -->
@@ -567,7 +632,7 @@
 
 <script>
 const DEFAULT_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSCvAyB32mezSJv1BSHzvF5Pl6mYKuZuVyWuTQXTs8yHlHFSNG_n8pJw8qS5o-OkR3dO-23M2eluW-U/pub?output=csv";
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxpHEeH_AI1n2bU1-VbS1_5rfLVlRv8FdvW4z6juX3rMaI9_FLeGZSeXEmgop2X_ZYu4A/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyAjlI_XM4x6rTb_WSPNaGnD3dTl228wBsfXeXn7CIc4Q812XY1GUqoynCNuQV7pIdbmA/exec";
 const EDIT_PASSCODE = "180234";
 
 const PROVINCES = [{"name": "กระบี่", "lat": 8.0862997, "lng": 98.90628349999997}, {"name": "กรุงเทพมหานคร", "lat": 13.7278956, "lng": 100.52412349999997}, {"name": "กาญจนบุรี", "lat": 14.0227797, "lng": 99.53281149999998}, {"name": "กาฬสินธุ์", "lat": 16.4314078, "lng": 103.5058755}, {"name": "กำแพงเพชร", "lat": 16.4827798, "lng": 99.52266179999992}, {"name": "ขอนแก่น", "lat": 16.4419355, "lng": 102.8359921}, {"name": "จันทบุรี", "lat": 12.61134, "lng": 102.10385459999998}, {"name": "ฉะเชิงเทรา", "lat": 13.6904194, "lng": 101.07795959999999}, {"name": "ชลบุรี", "lat": 13.3611431, "lng": 100.98467170000004}, {"name": "ชัยนาท", "lat": 15.1851971, "lng": 100.12512500000003}, {"name": "ชัยภูมิ", "lat": 15.8068173, "lng": 102.03150270000003}, {"name": "ชุมพร", "lat": 10.4930496, "lng": 99.18001989999993}, {"name": "ตรัง", "lat": 7.5593851, "lng": 99.61100650000003}, {"name": "ตราด", "lat": 12.2427563, "lng": 102.51747339999997}, {"name": "ตาก", "lat": 16.8839901, "lng": 99.12584979999997}, {"name": "นครนายก", "lat": 14.2069466, "lng": 101.21305110000003}, {"name": "นครปฐม", "lat": 13.8199206, "lng": 100.06216760000007}, {"name": "นครพนม", "lat": 17.392039, "lng": 104.76955079999993}, {"name": "นครราชสีมา", "lat": 14.9798997, "lng": 102.09776929999998}, {"name": "นครศรีธรรมราช", "lat": 8.4303975, "lng": 99.96312190000003}, {"name": "นครสวรรค์", "lat": 15.6930072, "lng": 100.12255949999997}, {"name": "นนทบุรี", "lat": 13.8621125, "lng": 100.51435279999998}, {"name": "นราธิวาส", "lat": 6.4254607, "lng": 101.82531429999995}, {"name": "น่าน", "lat": 18.7756318, "lng": 100.77304170000002}, {"name": "บึงกาฬ", "lat": 18.3609104, "lng": 103.64644629999998}, {"name": "บุรีรัมย์", "lat": 14.9930017, "lng": 103.10291910000001}, {"name": "ปทุมธานี", "lat": 14.0208391, "lng": 100.52502759999993}, {"name": "ประจวบคีรีขันธ์", "lat": 11.812367, "lng": 99.79732709999996}, {"name": "ปราจีนบุรี", "lat": 14.0509704, "lng": 101.37274389999993}, {"name": "ปัตตานี", "lat": 6.869484399999999, "lng": 101.25048259999994}, {"name": "พระนครศรีอยุธยา", "lat": 14.3532128, "lng": 100.56895989999998}, {"name": "พะเยา", "lat": 19.1664789, "lng": 99.9019419}, {"name": "พังงา", "lat": 8.4407456, "lng": 98.51930319999997}, {"name": "พัทลุง", "lat": 7.6166823, "lng": 100.07402309999998}, {"name": "พิจิตร", "lat": 16.4429516, "lng": 100.34823289999997}, {"name": "พิษณุโลก", "lat": 16.8298048, "lng": 100.26149150000003}, {"name": "ภูเก็ต", "lat": 7.9810496, "lng": 98.36388239999997}, {"name": "มหาสารคาม", "lat": 16.1850896, "lng": 103.30264609999995}, {"name": "มุกดาหาร", "lat": 16.542443, "lng": 104.72091509999996}, {"name": "ยะลา", "lat": 6.541147, "lng": 101.28039469999999}, {"name": "ยโสธร", "lat": 15.792641, "lng": 104.14528270000005}, {"name": "ระนอง", "lat": 9.9528702, "lng": 98.60846409999999}, {"name": "ระยอง", "lat": 12.6833115, "lng": 101.23742949999996}, {"name": "ราชบุรี", "lat": 13.5282893, "lng": 99.81342110000003}, {"name": "ร้อยเอ็ด", "lat": 16.0538196, "lng": 103.65200359999994}, {"name": "ลพบุรี", "lat": 14.7995081, "lng": 100.65337060000002}, {"name": "ลำปาง", "lat": 18.2888404, "lng": 99.49087399999996}, {"name": "ลำพูน", "lat": 18.5744606, "lng": 99.0087221}, {"name": "ศรีสะเกษ", "lat": 15.1186009, "lng": 104.32200949999992}, {"name": "สกลนคร", "lat": 17.1545995, "lng": 104.1348365}, {"name": "สงขลา", "lat": 7.1756004, "lng": 100.61434699999995}, {"name": "สตูล", "lat": 6.6238158, "lng": 100.06737440000006}, {"name": "สมุทรปราการ", "lat": 13.5990961, "lng": 100.59983190000003}, {"name": "สมุทรสงคราม", "lat": 13.4098217, "lng": 100.00226450000002}, {"name": "สมุทรสาคร", "lat": 13.5475216, "lng": 100.27439559999993}, {"name": "สระบุรี", "lat": 14.5289154, "lng": 100.91014210000003}, {"name": "สระแก้ว", "lat": 13.824038, "lng": 102.0645839}, {"name": "สิงห์บุรี", "lat": 14.8936253, "lng": 100.39673140000002}, {"name": "สุพรรณบุรี", "lat": 14.4744892, "lng": 100.11771279999994}, {"name": "สุราษฎร์ธานี", "lat": 9.1382389, "lng": 99.32174829999997}, {"name": "สุรินทร์", "lat": 14.882905, "lng": 103.49371070000007}, {"name": "สุโขทัย", "lat": 17.0055573, "lng": 99.82637120000004}, {"name": "หนองคาย", "lat": 17.8782803, "lng": 102.74126380000007}, {"name": "หนองบัวลำภู", "lat": 17.2218247, "lng": 102.42603680000002}, {"name": "อำนาจเจริญ", "lat": 15.8656783, "lng": 104.62577740000006}, {"name": "อุดรธานี", "lat": 17.4138413, "lng": 102.78723250000007}, {"name": "อุตรดิตถ์", "lat": 17.6200886, "lng": 100.09929420000003}, {"name": "อุทัยธานี", "lat": 15.3835001, "lng": 100.02455269999996}, {"name": "อุบลราชธานี", "lat": 15.2286861, "lng": 104.85642170000006}, {"name": "อ่างทอง", "lat": 14.5896054, "lng": 100.45505200000002}, {"name": "เชียงราย", "lat": 19.9071656, "lng": 99.83095500000002}, {"name": "เชียงใหม่", "lat": 18.7877477, "lng": 98.99313110000003}, {"name": "เพชรบุรี", "lat": 13.1111601, "lng": 99.93913069999996}, {"name": "เพชรบูรณ์", "lat": 16.4189807, "lng": 101.15509259999999}, {"name": "เลย", "lat": 17.4860232, "lng": 101.72230020000006}, {"name": "แพร่", "lat": 18.1445774, "lng": 100.14028310000003}, {"name": "แม่ฮ่องสอน", "lat": 19.2990643, "lng": 97.96562259999996}];
@@ -575,11 +640,15 @@ const PROVINCES = [{"name": "กระบี่", "lat": 8.0862997, "lng": 98.90
 let CONFIG = { csvUrl: DEFAULT_CSV_URL, scriptUrl: DEFAULT_SCRIPT_URL };
 let allRows = [];      // rows from the published sheet
 let pendingRows = [];  // rows added locally, not yet confirmed in the sheet
+let pendingEdits = {}; // { [no]: fields } edits applied locally, not yet reflected in the published CSV
+let pendingDeletes = []; // [no, ...] rows deleted locally, not yet reflected in the published CSV
 let activeStatusFilter = "all";
 let overdueOnly = false;
 let editingNo = null; // when set, the add/edit modal is in "edit" mode for this row's No.
 let deletingNo = null;
 let map, clickLayer;
+let summaryMap, summaryClickLayer;
+let provinceProportionChart, statusProportionChart, trendChart;
 let currentPage = "home";
 let calYear, calMonth; // 0-indexed month for the calendar page
 let calSelectedDate = null; // "YYYY-MM-DD" of the selected day, or null
@@ -665,10 +734,26 @@ async function loadPending(){
     const r = await window.storage.get('pending_rows', false);
     if(r && r.value){ pendingRows = JSON.parse(r.value); }
   }catch(e){ pendingRows = []; }
+  try{
+    const r2 = await window.storage.get('pending_edits', false);
+    if(r2 && r2.value){ pendingEdits = JSON.parse(r2.value); }
+  }catch(e){ pendingEdits = {}; }
+  try{
+    const r3 = await window.storage.get('pending_deletes', false);
+    if(r3 && r3.value){ pendingDeletes = JSON.parse(r3.value); }
+  }catch(e){ pendingDeletes = []; }
 }
 async function savePending(){
   try{ await window.storage.set('pending_rows', JSON.stringify(pendingRows), false); }
   catch(e){ console.error('save pending failed', e); }
+}
+async function savePendingEdits(){
+  try{ await window.storage.set('pending_edits', JSON.stringify(pendingEdits), false); }
+  catch(e){ console.error('save pending edits failed', e); }
+}
+async function savePendingDeletes(){
+  try{ await window.storage.set('pending_deletes', JSON.stringify(pendingDeletes), false); }
+  catch(e){ console.error('save pending deletes failed', e); }
 }
 
 // ---------- Data fetching ----------
@@ -705,6 +790,33 @@ function fetchData(){
         !allRows.some(r => r.province === p.province && r.problem === p.problem)
       );
       savePending();
+
+      // reconcile pending deletes: the published CSV lags behind real edits by several
+      // minutes, so a row that was deleted server-side may still appear here for a while.
+      // Keep hiding it until it's actually gone from the fetched data, then forget it.
+      pendingDeletes = pendingDeletes.filter(no => {
+        const stillPresent = allRows.some(r => String(r.no) === String(no));
+        return stillPresent; // keep suppressing while still present; drop once confirmed gone
+      });
+      allRows = allRows.filter(r => !pendingDeletes.some(no => String(no) === String(r.no)));
+      savePendingDeletes();
+
+      // reconcile pending edits: same lag issue — keep showing the locally-edited version
+      // until the fetched row itself reflects the edit (matching status + a real Date_Update)
+      Object.keys(pendingEdits).forEach(no => {
+        const fields = pendingEdits[no];
+        const idx = allRows.findIndex(r => String(r.no) === String(no));
+        if(idx === -1) return; // row not in this fetch (maybe also mid-delete); leave pending as-is
+        const serverRow = allRows[idx];
+        const matches = serverRow.status === fields.status &&
+          normalize(serverRow.dateUpdate) === normalize(fields.dateUpdate);
+        if(matches){
+          delete pendingEdits[no]; // server has caught up, stop overriding
+        }else{
+          allRows[idx] = Object.assign({}, serverRow, fields);
+        }
+      });
+      savePendingEdits();
 
       document.getElementById('lastSync').textContent = 'ซิงค์ล่าสุด ' + new Date().toLocaleTimeString('th-TH');
       renderAll();
@@ -838,6 +950,7 @@ function renderAll(){
   renderRows();
   renderMap();
   if(currentPage === 'calendar'){ renderCalendar(); }
+  if(currentPage === 'summary'){ renderSummaryPage(); }
 }
 
 // ---------- Map (light-to-dark color scale by report count) ----------
@@ -852,16 +965,7 @@ function colorForIntensity(t){
   return `rgb(${r},${g},${b})`;
 }
 
-function initMap(){
-  map = L.map('map', { scrollWheelZoom:false }).setView([13.4, 101.2], 5.4);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
-    subdomains: 'abcd', maxZoom: 12
-  }).addTo(map);
-  clickLayer = L.layerGroup().addTo(map);
-}
-
-function renderMap(){
+function populateProvinceColorLayer(layerGroup){
   const rows = combinedRows();
   const byProvince = {};
   rows.forEach(r=>{
@@ -872,7 +976,7 @@ function renderMap(){
   const counts = Object.values(byProvince).map(arr => arr.length);
   const maxCount = counts.length ? Math.max(...counts) : 1;
 
-  clickLayer.clearLayers();
+  layerGroup.clearLayers();
 
   PROVINCES.forEach(p=>{
     const issues = byProvince[p.name] || [];
@@ -896,7 +1000,217 @@ function renderMap(){
     });
     marker.bindPopup(popupHtml);
     marker.provinceName = p.name;
-    marker.addTo(clickLayer);
+    marker.addTo(layerGroup);
+  });
+}
+
+function initMap(){
+  map = L.map('map', { scrollWheelZoom:false }).setView([13.4, 101.2], 5.4);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    subdomains: 'abcd', maxZoom: 12
+  }).addTo(map);
+  clickLayer = L.layerGroup().addTo(map);
+}
+
+function renderMap(){
+  populateProvinceColorLayer(clickLayer);
+}
+
+function initSummaryMap(){
+  summaryMap = L.map('summaryMap', { scrollWheelZoom:false }).setView([13.4, 101.2], 5.2);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    subdomains: 'abcd', maxZoom: 12
+  }).addTo(summaryMap);
+  summaryClickLayer = L.layerGroup().addTo(summaryMap);
+}
+
+function renderSummaryMap(){
+  if(!summaryMap) return;
+  populateProvinceColorLayer(summaryClickLayer);
+}
+
+// ---------- Summary / Analytics page ----------
+const CHART_PALETTE = ['#C7A252','#D1495B','#E0A458','#4FB286','#5B8FD1','#B07CC6','#D18C5B','#6FBFB0'];
+
+function renderSummaryPage(){
+  const rows = combinedRows();
+  renderSummaryKpis(rows);
+  renderProvinceProportionChart(rows);
+  renderStatusProportionChart(rows);
+  renderTrendChart(rows);
+  renderSummaryMap();
+}
+
+function renderSummaryKpis(rows){
+  const total = rows.length;
+  const doneRows = rows.filter(r => r.status === 'เสร็จสิ้น');
+  const resolvedPct = total ? Math.round((doneRows.length / total) * 100) : 0;
+  const overdueCount = rows.filter(isOverdue).length;
+
+  // average resolution time: from Date to Date_Update, only for resolved rows with both parseable
+  const durations = doneRows.map(r=>{
+    const d0 = parseStoredDate(r.date);
+    const d1 = parseStoredDate(r.dateUpdate);
+    if(!d0 || !d1) return null;
+    const days = (d1.getTime() - d0.getTime()) / (1000*60*60*24);
+    return days >= 0 ? days : null;
+  }).filter(d => d !== null);
+  const avgDays = durations.length ? (durations.reduce((a,b)=>a+b,0) / durations.length) : null;
+
+  const counts = {};
+  rows.forEach(r => { counts[r.province] = (counts[r.province]||0) + 1; });
+  const topEntry = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+
+  document.getElementById('sumTotal').textContent = total;
+  document.getElementById('sumResolvedPct').textContent = resolvedPct + '%';
+  document.getElementById('sumOverdue').textContent = overdueCount;
+  document.getElementById('sumAvgDays').textContent = avgDays !== null ? avgDays.toFixed(1) : '-';
+  document.getElementById('sumTopProvince').textContent = topEntry ? `${topEntry[0]} (${topEntry[1]})` : '-';
+}
+
+function renderProvinceProportionChart(rows){
+  const counts = {};
+  rows.forEach(r => { counts[r.province] = (counts[r.province]||0) + 1; });
+  const entries = Object.entries(counts).sort((a,b)=> b[1]-a[1]);
+
+  const TOP_N = 7;
+  const top = entries.slice(0, TOP_N);
+  const restTotal = entries.slice(TOP_N).reduce((s,[,c])=>s+c, 0);
+  const labels = top.map(([name])=>name);
+  const values = top.map(([,c])=>c);
+  if(restTotal > 0){ labels.push('อื่นๆ'); values.push(restTotal); }
+
+  const ctx = document.getElementById('provinceProportionChart').getContext('2d');
+  if(provinceProportionChart){ provinceProportionChart.destroy(); }
+  if(entries.length === 0){ provinceProportionChart = null; return; }
+
+  provinceProportionChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: labels.map((_,i)=> CHART_PALETTE[i % CHART_PALETTE.length]),
+        borderColor: '#16232F',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#E9EEF2', font: { family: 'Sarabun', size: 12 }, padding: 10 } },
+        tooltip: {
+          callbacks: {
+            label: function(item){
+              const total = values.reduce((a,b)=>a+b,0);
+              const pct = total ? ((item.parsed/total)*100).toFixed(1) : 0;
+              return `${item.label}: ${item.parsed} รายการ (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderStatusProportionChart(rows){
+  const order = ['รอดำเนินการ','กำลังดำเนินการ','เสร็จสิ้น'];
+  const colors = { 'รอดำเนินการ':'#D1495B', 'กำลังดำเนินการ':'#E0A458', 'เสร็จสิ้น':'#4FB286' };
+  const counts = {};
+  rows.forEach(r => { counts[r.status] = (counts[r.status]||0) + 1; });
+  const labels = order.filter(s => counts[s] > 0);
+  const values = labels.map(s => counts[s]);
+  // include any unexpected status values too, so nothing is silently dropped
+  Object.keys(counts).forEach(s => { if(!order.includes(s)){ labels.push(s); values.push(counts[s]); } });
+
+  const ctx = document.getElementById('statusProportionChart').getContext('2d');
+  if(statusProportionChart){ statusProportionChart.destroy(); }
+  if(labels.length === 0){ statusProportionChart = null; return; }
+
+  statusProportionChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: labels.map(s => colors[s] || '#4A5C6C'),
+        borderColor: '#16232F',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#E9EEF2', font: { family: 'Sarabun', size: 12 }, padding: 10 } },
+        tooltip: {
+          callbacks: {
+            label: function(item){
+              const total = values.reduce((a,b)=>a+b,0);
+              const pct = total ? ((item.parsed/total)*100).toFixed(1) : 0;
+              return `${item.label}: ${item.parsed} รายการ (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderTrendChart(rows){
+  const DAYS = 30;
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const buckets = [];
+  const counts = {};
+  for(let i = DAYS-1; i >= 0; i--){
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    buckets.push(key);
+    counts[key] = 0;
+  }
+  rows.forEach(r=>{
+    const d = parseStoredDate(r.date);
+    if(!d) return;
+    const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    if(key in counts){ counts[key]++; }
+  });
+  const labels = buckets.map(k => {
+    const [y,m,d] = k.split('-');
+    return `${d}/${m}`;
+  });
+  const values = buckets.map(k => counts[k]);
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  if(trendChart){ trendChart.destroy(); }
+
+  trendChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'จำนวนรายการ',
+        data: values,
+        borderColor: '#C7A252',
+        backgroundColor: 'rgba(199,162,82,0.15)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8FA2B3', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { ticks: { color: '#8FA2B3', precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+      }
+    }
   });
 }
 
@@ -926,6 +1240,11 @@ function switchPage(page){
       calMonth = now.getMonth();
     }
     renderCalendar();
+  }
+  if(page === 'summary'){
+    if(!summaryMap){ initSummaryMap(); }
+    renderSummaryPage();
+    setTimeout(() => { if(summaryMap) summaryMap.invalidateSize(); }, 50);
   }
 }
 
