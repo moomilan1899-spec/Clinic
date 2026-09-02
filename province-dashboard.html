@@ -466,6 +466,15 @@
   <!-- ============ PAGE: SUMMARY ============ -->
   <div id="page-summary" class="page">
 
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="table-controls" style="border-bottom:none;">
+        <label style="font-size:13px;color:var(--muted);white-space:nowrap;align-self:center;">กรองตามจังหวัด:</label>
+        <select id="summaryProvinceFilter" style="background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'Sarabun',sans-serif;font-size:13.5px;min-width:200px;">
+          <option value="all">ทุกจังหวัด</option>
+        </select>
+      </div>
+    </div>
+
     <div class="stats" id="summaryKpiCards">
       <div class="stat-card total"><div class="num" id="sumTotal">0</div><div class="lbl">รายการทั้งหมด</div></div>
       <div class="stat-card done"><div class="num" id="sumResolvedPct">0%</div><div class="lbl">แก้ไขเสร็จสิ้นแล้ว</div></div>
@@ -648,6 +657,7 @@ let editingNo = null; // when set, the add/edit modal is in "edit" mode for this
 let deletingNo = null;
 let map, clickLayer;
 let summaryMap, summaryClickLayer;
+let summaryProvinceFilter = 'all';
 let provinceProportionChart, statusProportionChart, trendChart;
 let currentPage = "home";
 let calYear, calMonth; // 0-indexed month for the calendar page
@@ -659,7 +669,10 @@ function normalizeProvince(s){
 }
 
 // ---------- Date helpers ----------
-// Sheet stores date as "YYYY-MM-DD HH:mm" text. <input type="datetime-local"> uses "YYYY-MM-DDTHH:mm".
+// Sheet stores date as "YYYY-MM-DD HH:mm" text, but Google Sheets sometimes
+// auto-converts this into a real date/time cell and re-serializes it in CSV
+// without zero-padding (e.g. "2026-08-30 6:03" instead of "06:03"), which
+// breaks strict ISO parsing. parseStoredDate() below is tolerant of that.
 function pad2(n){ return String(n).padStart(2,'0'); }
 function dateToLocalInputValue(d){
   return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -668,25 +681,41 @@ function inputValueToStoredString(v){
   // v like "2026-08-27T14:30" -> "2026-08-27 14:30"
   return v ? v.replace('T', ' ') : '';
 }
+function parseStoredDate(s){
+  if(!s) return null;
+  const str = normalize(s);
+
+  // YYYY-MM-DD H:mm[:ss] or YYYY/MM/DD H:mm[:ss] — hour/minute/day/month need not be zero-padded
+  let m = str.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if(m){
+    const [, y, mo, d, h, mi, se] = m;
+    const dt = new Date(Number(y), Number(mo)-1, Number(d), Number(h||0), Number(mi||0), Number(se||0));
+    if(!isNaN(dt.getTime())) return dt;
+  }
+
+  // D/M/YYYY or M/D/YYYY H:mm[:ss] (e.g. Google Sheets locale re-export). Assume day-first
+  // since that matches this sheet's own locale; falls back to native parsing below if wrong.
+  m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if(m){
+    const [, d, mo, y, h, mi, se] = m;
+    const dt = new Date(Number(y), Number(mo)-1, Number(d), Number(h||0), Number(mi||0), Number(se||0));
+    if(!isNaN(dt.getTime())) return dt;
+  }
+
+  // last resort: native parsing (handles anything already in a standard format)
+  const cleaned = str.replace(' ', 'T');
+  const dt = new Date(cleaned);
+  return isNaN(dt.getTime()) ? null : dt;
+}
 function storedStringToInputValue(s){
-  if(!s) return '';
-  const cleaned = normalize(s).replace(' ', 'T');
-  const d = new Date(cleaned);
-  if(isNaN(d.getTime())) return '';
-  return dateToLocalInputValue(d);
+  const d = parseStoredDate(s);
+  return d ? dateToLocalInputValue(d) : '';
 }
 function formatDateDisplay(s){
   if(!s) return '';
-  const cleaned = normalize(s).replace(' ', 'T');
-  const d = new Date(cleaned);
-  if(isNaN(d.getTime())) return escapeHtml(s); // fall back to raw text if unparseable
+  const d = parseStoredDate(s);
+  if(!d) return escapeHtml(s); // fall back to raw text if unparseable
   return d.toLocaleString('th-TH', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-}
-function parseStoredDate(s){
-  if(!s) return null;
-  const cleaned = normalize(s).replace(' ', 'T');
-  const d = new Date(cleaned);
-  return isNaN(d.getTime()) ? null : d;
 }
 const OVERDUE_DAYS = 3;
 function daysSince(d){
@@ -965,8 +994,8 @@ function colorForIntensity(t){
   return `rgb(${r},${g},${b})`;
 }
 
-function populateProvinceColorLayer(layerGroup){
-  const rows = combinedRows();
+function populateProvinceColorLayer(layerGroup, rows){
+  rows = rows || combinedRows();
   const byProvince = {};
   rows.forEach(r=>{
     if(!byProvince[r.province]) byProvince[r.province] = [];
@@ -1026,21 +1055,40 @@ function initSummaryMap(){
   summaryClickLayer = L.layerGroup().addTo(summaryMap);
 }
 
-function renderSummaryMap(){
+function renderSummaryMap(rows){
   if(!summaryMap) return;
-  populateProvinceColorLayer(summaryClickLayer);
+  populateProvinceColorLayer(summaryClickLayer, rows);
 }
 
 // ---------- Summary / Analytics page ----------
 const CHART_PALETTE = ['#C7A252','#D1495B','#E0A458','#4FB286','#5B8FD1','#B07CC6','#D18C5B','#6FBFB0'];
 
-function renderSummaryPage(){
+function populateSummaryProvinceFilter(){
   const rows = combinedRows();
+  const counts = {};
+  rows.forEach(r=>{ counts[r.province] = (counts[r.province]||0) + 1; });
+  const provinces = Object.keys(counts).sort((a,b)=> counts[b]-counts[a]);
+  const sel = document.getElementById('summaryProvinceFilter');
+  const prevValue = sel.value || 'all';
+  sel.innerHTML = '<option value="all">ทุกจังหวัด</option>' +
+    provinces.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)} (${counts[p]})</option>`).join('');
+  if(prevValue === 'all' || provinces.includes(prevValue)){
+    sel.value = prevValue;
+  }else{
+    sel.value = 'all';
+    summaryProvinceFilter = 'all';
+  }
+}
+
+function renderSummaryPage(){
+  populateSummaryProvinceFilter();
+  const all = combinedRows();
+  const rows = summaryProvinceFilter === 'all' ? all : all.filter(r => r.province === summaryProvinceFilter);
   renderSummaryKpis(rows);
   renderProvinceProportionChart(rows);
   renderStatusProportionChart(rows);
   renderTrendChart(rows);
-  renderSummaryMap();
+  renderSummaryMap(rows);
 }
 
 function renderSummaryKpis(rows){
@@ -1620,6 +1668,19 @@ document.getElementById('btnClearDate').addEventListener('click', ()=>{
 });
 
 document.getElementById('btnExport').addEventListener('click', exportExcel);
+
+document.getElementById('summaryProvinceFilter').addEventListener('change', function(){
+  summaryProvinceFilter = this.value;
+  renderSummaryPage();
+  if(summaryMap){
+    if(summaryProvinceFilter !== 'all'){
+      const p = PROVINCES.find(pp => pp.name === summaryProvinceFilter);
+      if(p) summaryMap.flyTo([p.lat, p.lng], 8, {duration:0.6});
+    }else{
+      summaryMap.flyTo([13.4, 101.2], 5.2, {duration:0.6});
+    }
+  }
+});
 
 document.querySelectorAll('.nav-icon[data-page]').forEach(btn=>{
   btn.addEventListener('click', ()=> switchPage(btn.dataset.page));
